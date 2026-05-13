@@ -3,9 +3,11 @@ import ReactDOM from "react-dom/client";
 import { FluentProvider, webLightTheme } from "@fluentui/react-components";
 import { App } from "./App";
 import { awaitOffice } from "./lib/office";
+import { applyUrlParamConfig } from "./lib/config";
 
 async function bootstrap() {
   await awaitOffice();
+  await applyUrlParamConfig();
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
       <FluentProvider theme={webLightTheme}>

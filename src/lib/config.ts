@@ -57,3 +57,25 @@ export async function setTokens(t: StoredTokens): Promise<void> {
 export async function clearTokens(): Promise<void> {
   await storage().remove(TOKENS_KEY);
 }
+
+// First-run bootstrap from URL params written by the Setup wizard.
+// Manifest packaged via /outlook/setup/ embeds ?halo=...&clientId=... in
+// the runtime page URL so the user never sees the in-app config screen.
+// Honored only when no config is stored yet — never overwrites existing setup.
+export async function applyUrlParamConfig(): Promise<boolean> {
+  if (getConfig()) return false;
+  const params = new URLSearchParams(window.location.search);
+  const halo = params.get("halo");
+  const clientId = params.get("clientId");
+  if (!halo || !clientId) return false;
+  try {
+    await setConfig({ haloBaseUrl: halo, clientId });
+  } catch {
+    return false;
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.delete("halo");
+  url.searchParams.delete("clientId");
+  history.replaceState(null, "", url.pathname + (url.search ? url.search : "") + url.hash);
+  return true;
+}
