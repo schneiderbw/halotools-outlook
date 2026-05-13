@@ -23,10 +23,19 @@ import {
 } from "./config";
 
 const REDIRECT_PATH = "/outlook/auth/callback.html";
+const START_PATH = "/outlook/auth/start.html";
 const ADDIN_ORIGIN = "https://tools.iusehalo.com";
 
 function redirectUri(): string {
   return ADDIN_ORIGIN + REDIRECT_PATH;
+}
+
+// displayDialogAsync requires the initial URL to be at the add-in's own
+// origin — not a subdomain, not a different domain even if listed in
+// validDomains/AppDomains. Wrap the third-party authorize URL in our
+// same-origin start page, which redirects to it on load.
+function dialogStartUrl(authorizeUrl: string): string {
+  return `${ADDIN_ORIGIN}${START_PATH}?to=${encodeURIComponent(authorizeUrl)}`;
 }
 
 interface DialogResultMessage {
@@ -46,7 +55,7 @@ export async function signIn(): Promise<StoredTokens> {
   const state = generateState();
 
   const authorizeUrl = buildAuthorizeUrl(cfg, challenge, state);
-  const message = await openAuthDialog(authorizeUrl);
+  const message = await openAuthDialog(dialogStartUrl(authorizeUrl));
 
   if (message.error) {
     throw new Error(`${message.error}: ${message.errorDescription ?? ""}`.trim());
