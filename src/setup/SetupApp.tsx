@@ -21,16 +21,11 @@ import {
   Copy24Regular,
   ArrowDownload24Regular,
 } from "@fluentui/react-icons";
-import {
-  buildPackageZip,
-  downloadBlob,
-  fetchTemplate,
-} from "./package";
+import { buildXmlManifest, downloadXmlManifest } from "./xml-manifest";
 
 type Step = "halo-url" | "register-app" | "client-id" | "done";
 
 const REDIRECT_URI = `${window.location.origin}/outlook/auth/callback.html`;
-const MANIFEST_TEMPLATE_URL = "/outlook/manifest.json";
 
 const useStyles = makeStyles({
   page: {
@@ -161,13 +156,12 @@ export function SetupApp() {
     setError(undefined);
     setBuilding(true);
     try {
-      const template = await fetchTemplate(MANIFEST_TEMPLATE_URL);
-      const zip = await buildPackageZip(template, {
+      const xml = buildXmlManifest({
         haloBaseUrl: normalizedHalo,
         clientId: clientId.trim(),
       });
       const slug = new URL(normalizedHalo).hostname.replace(/\./g, "-");
-      downloadBlob(zip, `halo-outlook-${slug}.zip`);
+      downloadXmlManifest(xml, `halo-outlook-${slug}.xml`);
       setStep("done");
     } catch (e) {
       setError((e as Error).message);
@@ -184,9 +178,10 @@ export function SetupApp() {
             <div className={styles.header}>
               <Title2>Halo for Outlook — setup</Title2>
               <Body1 className={styles.helpText}>
-                Generate a tenant-specific Outlook app package for your MSP. Upload
-                the resulting zip in the Microsoft 365 admin center and your team
-                gets the add-in preconfigured for your HaloPSA instance.
+                Generate a tenant-specific Outlook add-in manifest for your MSP.
+                Upload the resulting <code>.xml</code> file in the Microsoft 365
+                admin center and your team gets the add-in preconfigured for
+                your HaloPSA instance.
               </Body1>
             </div>
           }
@@ -282,7 +277,7 @@ export function SetupApp() {
                 disabled={!clientId.trim() || building}
                 onClick={downloadPackage}
               >
-                {building ? "Building…" : "Download package"}
+                {building ? "Building…" : "Download manifest"}
               </Button>
             </div>
           </>
@@ -292,26 +287,26 @@ export function SetupApp() {
           <>
             <MessageBar intent="success">
               <MessageBarBody>
-                <MessageBarTitle>Package ready</MessageBarTitle>
-                Now upload it to Microsoft 365.
+                <MessageBarTitle>Manifest ready</MessageBarTitle>
+                Upload it to the Microsoft 365 admin center.
               </MessageBarBody>
             </MessageBar>
             <div className={styles.successBody}>
               <Subtitle2>Next: deploy to your tenant</Subtitle2>
               <ol className={styles.ol}>
                 <li><Body1>Sign in at <strong>admin.microsoft.com</strong> as a global or apps admin.</Body1></li>
-                <li><Body1>Go to <strong>Settings → Integrated apps</strong>.</Body1></li>
-                <li><Body1>Click <strong>Upload custom apps</strong>.</Body1></li>
-                <li><Body1>Choose <strong>App type: Office Add-in</strong> and <strong>Upload manifest file (.zip)</strong>, then pick the file you just downloaded.</Body1></li>
-                <li><Body1>Assign to your team and finish the deployment.</Body1></li>
+                <li><Body1>Go to <strong>Settings → Integrated apps → Upload custom apps</strong>.</Body1></li>
+                <li><Body1><strong>App type:</strong> Office Add-in.</Body1></li>
+                <li><Body1><strong>Upload manifest file (.xml) from device</strong> → pick the file you just downloaded.</Body1></li>
+                <li><Body1>Assign to specific users/groups (or the whole org) and finish.</Body1></li>
               </ol>
               <Text className={styles.helpText}>
-                Microsoft pushes the add-in to assigned users within a few hours. On first launch
-                it auto-configures for your HaloPSA instance — no per-user setup.
+                Microsoft typically pushes the add-in to assigned users within minutes.
+                On first launch the task pane auto-configures for your HaloPSA instance — no per-user setup.
               </Text>
               <div className={styles.buttonRow}>
                 <Button onClick={() => { setStep("halo-url"); setHaloUrl(""); setClientId(""); }}>
-                  Build another package
+                  Build another manifest
                 </Button>
               </div>
             </div>
