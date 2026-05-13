@@ -8,3 +8,5 @@ dist/
 .vscode/
 .idea/
 coverage/
+dist-node/
+tsconfig.tsbuildinfo
