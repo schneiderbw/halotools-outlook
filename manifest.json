@@ -1,0 +1,107 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "id": "10344d7a-f46f-463c-a0fb-5fbf43b3d074",
+  "version": "0.1.0",
+  "developer": {
+    "name": "Rising Tide Consulting Group",
+    "websiteUrl": "https://iusehalo.com",
+    "privacyUrl": "https://iusehalo.com/privacy",
+    "termsOfUseUrl": "https://iusehalo.com/terms"
+  },
+  "name": {
+    "short": "Halo",
+    "full": "HaloPSA for Outlook"
+  },
+  "description": {
+    "short": "Surface Halo context and log emails to tickets without leaving Outlook.",
+    "full": "Look up the sender's contact, company, and open tickets in HaloPSA. Append the current email to an existing ticket or create a new one — all from your inbox. Multi-tenant: connect to your own HaloPSA instance."
+  },
+  "icons": {
+    "outline": "assets/icon-32.png",
+    "color": "assets/icon-128.png"
+  },
+  "accentColor": "#0F6CBD",
+  "localizationInfo": {
+    "defaultLanguageTag": "en-US"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "MailboxItem.Read.User",
+          "type": "Delegated"
+        }
+      ]
+    }
+  },
+  "validDomains": [
+    "tools.iusehalo.com"
+  ],
+  "extensions": [
+    {
+      "requirements": {
+        "scopes": ["mail"],
+        "capabilities": [
+          { "name": "Mailbox", "minVersion": "1.10" }
+        ]
+      },
+      "runtimes": [
+        {
+          "id": "TaskPaneRuntime",
+          "type": "general",
+          "code": {
+            "page": "https://tools.iusehalo.com/outlook/index.html"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "ShowTaskPane",
+              "type": "openPage",
+              "pinnable": true,
+              "view": "dashboard"
+            }
+          ]
+        }
+      ],
+      "ribbons": [
+        {
+          "contexts": ["mailRead"],
+          "tabs": [
+            {
+              "builtInTabId": "TabDefault",
+              "groups": [
+                {
+                  "id": "HaloGroup",
+                  "label": "HaloPSA",
+                  "icons": [
+                    { "size": 16, "url": "https://tools.iusehalo.com/outlook/assets/icon-16.png" },
+                    { "size": 32, "url": "https://tools.iusehalo.com/outlook/assets/icon-32.png" },
+                    { "size": 80, "url": "https://tools.iusehalo.com/outlook/assets/icon-80.png" }
+                  ],
+                  "controls": [
+                    {
+                      "id": "ShowHaloPane",
+                      "type": "button",
+                      "label": "Halo",
+                      "icons": [
+                        { "size": 16, "url": "https://tools.iusehalo.com/outlook/assets/icon-16.png" },
+                        { "size": 32, "url": "https://tools.iusehalo.com/outlook/assets/icon-32.png" },
+                        { "size": 80, "url": "https://tools.iusehalo.com/outlook/assets/icon-80.png" }
+                      ],
+                      "supertip": {
+                        "title": "Open Halo",
+                        "description": "Show sender context, open tickets, and log this email to a HaloPSA ticket."
+                      },
+                      "actionId": "ShowTaskPane"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
