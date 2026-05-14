@@ -1,21 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#1379DC"/>
-      <stop offset="100%" stop-color="#0A4E8C"/>
-    </linearGradient>
-    <radialGradient id="ringGlow" cx="50%" cy="40%" r="55%">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1"/>
-      <stop offset="100%" stop-color="#E8F2FF" stop-opacity="0.85"/>
-    </radialGradient>
-  </defs>
-  <rect x="0" y="0" width="128" height="128" rx="24" ry="24" fill="url(#bg)"/>
-  <!-- Halo ring -->
-  <ellipse cx="64" cy="64" rx="44" ry="14"
-    fill="none" stroke="url(#ringGlow)" stroke-width="10"
-    transform="rotate(-12 64 64)"/>
-  <!-- Inner accent -->
-  <ellipse cx="64" cy="64" rx="44" ry="14"
-    fill="none" stroke="#FFFFFF" stroke-width="2" stroke-opacity="0.4"
-    transform="rotate(-12 64 64)"/>
+  <!-- HaloPSA mark: red speech-bubble disc -->
+  <circle cx="64" cy="64" r="62" fill="#EF3340"/>
+  <!-- Inner white circle (speech bubble body), slightly offset upward -->
+  <circle cx="64" cy="60" r="32" fill="#FFFFFF"/>
+  <!-- Tail pointing down-left, joined to the inner circle -->
+  <path d="M 50 84 L 36 102 L 60 86 Z" fill="#FFFFFF"/>
 </svg>
