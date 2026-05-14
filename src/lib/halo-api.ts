@@ -380,4 +380,16 @@ export async function createContact(payload: CreateContactPayload): Promise<Halo
   return res[0];
 }
 
+/**
+ * Build a deep-link URL to a ticket in Halo's agent UI. Optionally jumps
+ * directly to a specific action within the ticket via &action_id=N.
+ * Returns undefined if the tenant config isn't loaded yet.
+ */
+export function ticketDeepLink(ticketId: number, actionId?: number): string | undefined {
+  const halo = getConfig()?.haloBaseUrl;
+  if (!halo) return undefined;
+  const base = `${halo}/ticket?id=${ticketId}`;
+  return actionId ? `${base}&action_id=${actionId}` : base;
+}
+
 export { HaloApiError };

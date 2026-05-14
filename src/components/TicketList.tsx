@@ -195,18 +195,14 @@ export function TicketList({ label, tickets, onTicketUpdated }: Props) {
 
   const openInHalo = (ticketId: number) => {
     if (!haloUrl) return;
-    // Halo's deep-link path for a single ticket in the agent UI. The trailing slash
-    // before the query matters on some Halo builds.
-    const url = `${haloUrl}/agent/?ticketid=${ticketId}`;
-    // window.open is more reliable than Office.context.ui.openBrowserWindow, which
-    // is silently a no-op on several Outlook hosts (new Outlook desktop especially).
+    // Halo's deep-link path for a single ticket. Add &action_id=N to jump to a
+    // specific action within the ticket.
+    const url = `${haloUrl}/ticket?id=${ticketId}`;
     const w = window.open(url, "_blank", "noopener,noreferrer");
     if (!w) {
-      // Popup blocked — fall back to the Office API which is allowed inside the host.
       try {
         Office.context.ui.openBrowserWindow(url);
       } catch {
-        /* last resort: just navigate within the task pane */
         window.location.href = url;
       }
     }

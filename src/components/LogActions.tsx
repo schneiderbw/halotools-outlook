@@ -26,6 +26,7 @@ import {
   createTicket,
   listTicketTypes,
   ticketTypesForAgentCreate,
+  ticketDeepLink,
 } from "../lib/halo-api";
 import {
   getBody,
@@ -165,7 +166,7 @@ function AppendDialog({
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
-  const [done, setDone] = useState<string | undefined>();
+  const [done, setDone] = useState<{ message: string; url?: string } | undefined>();
   const [internalNote, setInternalNote] = useState(false);
   const [includeAttachments, setIncludeAttachments] = useState(
     getDefaults().includeAttachmentsByDefault ?? true,
@@ -228,13 +229,17 @@ function AppendDialog({
         onResult("warning", `Appended to #${action.ticket_id}, but: ${attachWarning}`);
         setOpen(false);
       } else {
-        // In-dialog success so the user sees confirmation without scrolling. Auto-close after a beat.
-        setDone(`Appended to #${action.ticket_id}`);
+        // In-dialog success so the user sees confirmation without scrolling.
+        // Include a deep-link straight to the action just created.
+        setDone({
+          message: `Appended to #${action.ticket_id}`,
+          url: ticketDeepLink(action.ticket_id, action.id),
+        });
         onResult("success", `Appended to #${action.ticket_id}`);
         setTimeout(() => {
           setOpen(false);
           reset();
-        }, 1200);
+        }, 1800);
       }
     } catch (e) {
       onResult("error", (e as Error).message);
@@ -316,7 +321,17 @@ function AppendDialog({
 
             {done && (
               <MessageBar intent="success" style={{ marginTop: 12 }}>
-                <MessageBarBody>{done}</MessageBarBody>
+                <MessageBarBody>
+                  {done.message}
+                  {done.url && (
+                    <>
+                      {" — "}
+                      <a href={done.url} target="_blank" rel="noopener noreferrer">
+                        Open in Halo
+                      </a>
+                    </>
+                  )}
+                </MessageBarBody>
               </MessageBar>
             )}
           </DialogContent>
