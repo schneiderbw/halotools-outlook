@@ -344,7 +344,7 @@ function QuickHaloLinks({
           size="small"
           appearance="subtle"
           icon={<ArrowUpRight16Regular />}
-          onClick={() => open(`/agent/?userid=${contact.id}`)}
+          onClick={() => open(`/customer?userid=${contact.id}`)}
         >
           Open contact
         </Button>
@@ -354,19 +354,9 @@ function QuickHaloLinks({
           size="small"
           appearance="subtle"
           icon={<ArrowUpRight16Regular />}
-          onClick={() => open(`/agent/?clientid=${client.id}`)}
+          onClick={() => open(`/customer?clientid=${client.id}`)}
         >
           Open client
-        </Button>
-      )}
-      {client && (
-        <Button
-          size="small"
-          appearance="subtle"
-          icon={<ArrowUpRight16Regular />}
-          onClick={() => open(`/agent/?showmenu=false&open_only=true&client_id=${client.id}`)}
-        >
-          All open tickets
         </Button>
       )}
     </div>
