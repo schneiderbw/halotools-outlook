@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   Text,
   makeStyles,
@@ -391,24 +391,10 @@ function TicketRow({
 
 // ---------- Status pill ----------
 
-/** Map a Halo status to a Fluent Badge color. Halo's `type` strings vary per tenant
- * but well-known buckets are "new", "open", "onhold/pending", "closed". */
-function statusColor(s: HaloStatus | undefined):
-  | "brand"
-  | "danger"
-  | "important"
-  | "informative"
-  | "severe"
-  | "subtle"
-  | "success"
-  | "warning" {
-  if (!s) return "subtle";
-  if (s.isclosed) return "success";
-  const t = typeof s.type === "string" ? s.type.toLowerCase() : "";
-  if (t.includes("hold") || t.includes("pending")) return "warning";
-  if (t.includes("new")) return "informative";
-  if (t.includes("open") || t.includes("progress")) return "brand";
-  return "subtle";
+/** Inline style for the status badge using Halo's own configured hex colour. */
+function statusBadgeStyle(s: HaloStatus | undefined): CSSProperties | undefined {
+  if (!s?.colour) return undefined;
+  return { borderColor: s.colour, color: s.colour };
 }
 
 function StatusPill({
@@ -439,11 +425,11 @@ function StatusPill({
     <Popover open={open} onOpenChange={(_, d) => setOpen(d.open)} trapFocus>
       <PopoverTrigger disableButtonEnhancement>
         <Badge
-          appearance="tint"
-          color={statusColor(current)}
+          appearance="outline"
           icon={<Status16Regular />}
           size="medium"
           className={styles.pill}
+          style={statusBadgeStyle(current)}
         >
           {label}
         </Badge>
@@ -463,10 +449,15 @@ function StatusPill({
                 setOpen(false);
               }}
             >
-              <Badge
-                appearance="filled"
-                color={statusColor(s)}
-                size="extra-small"
+              <span
+                aria-hidden
+                style={{
+                  display: "inline-block",
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  backgroundColor: s.colour ?? tokens.colorNeutralStroke1,
+                }}
               />
               <span>{s.name}</span>
             </button>

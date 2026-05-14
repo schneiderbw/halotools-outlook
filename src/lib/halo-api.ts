@@ -214,19 +214,19 @@ export async function listTicketTypes(force = false): Promise<HaloTicketType[]> 
 }
 
 /**
- * Subset of ticket types an agent can actually choose when creating a normal ticket.
- * Drops non-ticket uses (opportunities, change requests, projects), response-only types,
- * and types explicitly disallowed for agent creation. Halo's list endpoint returns
- * everything indiscriminately, so we filter client-side.
+ * Subset of ticket types an agent can actually pick when creating a normal ticket.
+ * - use === "tickets" drops opportunities ("opps") and project types ("projects").
+ * - agentscanselect === false drops types that exist only for auto-creation
+ *   (e.g. "AI Parse Halo Email", "Triage") or end-user surfaces.
+ * - visible === false drops types Halo has hidden everywhere.
+ * Halo's /TicketType endpoint returns everything indiscriminately, so we filter here.
  */
 export function ticketTypesForAgentCreate(all: HaloTicketType[]): HaloTicketType[] {
   return all.filter((t) => {
     if (t.inactive) return false;
-    if (t.isresponseonly) return false;
-    if (t.allow_agent_creation === false) return false;
-    // `use` is typically "ticket" for the agent's main ticket form. Anything else
-    // (opportunity, change, project, kb, etc.) belongs in a different surface.
-    if (t.use && t.use !== "ticket") return false;
+    if (t.visible === false) return false;
+    if (t.agentscanselect === false) return false;
+    if (t.use && t.use !== "tickets") return false;
     return true;
   });
 }

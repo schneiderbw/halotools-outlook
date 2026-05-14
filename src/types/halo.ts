@@ -36,23 +36,26 @@ export interface CreateContactPayload {
 export interface HaloTicketType {
   id: number;
   name: string;
-  /** Surface where this type is usable: "ticket", "opportunity", "change", "project", etc. */
+  /** Surface where this type is usable: "tickets" / "opps" / "projects" (plural). */
   use: string;
   inactive?: boolean;
-  /** Halo flag set when this type is logging-only and not selectable in normal create flows. */
-  isresponseonly?: boolean;
-  /** Halo per-agent allowlist field — populated when the type is restricted to specific agents. */
-  show_restricted?: boolean;
-  /** Some Halo versions expose an explicit "agents can create" flag. */
-  allow_agent_creation?: boolean;
+  /** Whether agents are allowed to pick this type when creating. False = hidden from the agent picker. */
+  agentscanselect?: boolean;
+  enduserscanselect?: boolean;
+  anonymouscanselect?: boolean;
+  /** Visible at all in any picker. Some types are flagged invisible without being inactive. */
+  visible?: boolean;
 }
 
 export interface HaloStatus {
   id: number;
   name: string;
-  type?: string;
-  /** When true, this status counts as "ticket is closed" for Halo's reporting */
-  isclosed?: boolean;
+  /** Status category code (0 = regular, 1 = order, 2 = item, 3 = special). NOT a label string. */
+  type?: number;
+  /** Hex colour Halo assigns to the status — what we render on the pill. */
+  colour?: string;
+  /** SLA behaviour: "removehold" | "hold" | "none". Useful as a heuristic for closed-ness. */
+  slaaction?: string;
   inactive?: boolean;
 }
 
