@@ -119,9 +119,19 @@ export async function findTicketsByConversationId(
   const q = new URLSearchParams({
     [`field_${customFieldName}`]: conversationId,
     pageinate: "false",
+    includedetails: "true",
   });
   const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
-  return Array.isArray(res) ? res : res.tickets;
+  const all = Array.isArray(res) ? res : res.tickets;
+  // Halo silently ignores filter params for custom fields it doesn't recognize
+  // (or that no ticket has populated yet), returning every ticket in the tenant.
+  // Verify each ticket actually carries the matching custom field value before
+  // claiming it belongs to this conversation.
+  return all.filter((t) =>
+    t.customfields?.some(
+      (cf) => cf.name === customFieldName && String(cf.value) === conversationId,
+    ),
+  );
 }
 
 // ---------- Reference data (cached in-memory for the session) ----------
