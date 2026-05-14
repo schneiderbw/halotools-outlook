@@ -62,6 +62,22 @@
               "view": "dashboard"
             }
           ]
+        },
+        {
+          "id": "ComposeRuntime",
+          "type": "general",
+          "code": {
+            "page": "https://tools.iusehalo.com/outlook/compose/"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "ShowComposePane",
+              "type": "openPage",
+              "pinnable": true,
+              "view": "dashboard"
+            }
+          ]
         }
       ],
       "ribbons": [
@@ -94,6 +110,42 @@
                         "description": "Show sender context, open tickets, and log this email to a HaloPSA ticket."
                       },
                       "actionId": "ShowTaskPane"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "contexts": ["mailCompose"],
+          "tabs": [
+            {
+              "builtInTabId": "TabDefault",
+              "groups": [
+                {
+                  "id": "HaloComposeGroup",
+                  "label": "HaloPSA",
+                  "icons": [
+                    { "size": 16, "url": "https://tools.iusehalo.com/outlook/assets/icon-16.png" },
+                    { "size": 32, "url": "https://tools.iusehalo.com/outlook/assets/icon-32.png" },
+                    { "size": 80, "url": "https://tools.iusehalo.com/outlook/assets/icon-80.png" }
+                  ],
+                  "controls": [
+                    {
+                      "id": "ShowHaloComposePane",
+                      "type": "button",
+                      "label": "Halo",
+                      "icons": [
+                        { "size": 16, "url": "https://tools.iusehalo.com/outlook/assets/icon-16.png" },
+                        { "size": 32, "url": "https://tools.iusehalo.com/outlook/assets/icon-32.png" },
+                        { "size": 80, "url": "https://tools.iusehalo.com/outlook/assets/icon-80.png" }
+                      ],
+                      "supertip": {
+                        "title": "Open Halo",
+                        "description": "Insert ticket links, KB articles, and log this outgoing email to a HaloPSA ticket."
+                      },
+                      "actionId": "ShowComposePane"
                     }
                   ]
                 }

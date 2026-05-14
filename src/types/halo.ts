@@ -9,6 +9,10 @@ export interface HaloUser {
   site_id?: number;
   site_name?: string;
   inactive?: boolean;
+  phonenumber?: string;
+  mobile_number?: string;
+  jobtitle?: string;
+  tags?: Array<{ value: string }>;
 }
 
 export interface HaloClient {
@@ -16,6 +20,17 @@ export interface HaloClient {
   name: string;
   inactive?: boolean;
   client_email_address_domain?: string;
+  accountmanager_name?: string;
+  accountmanager_id?: number;
+  tags?: Array<{ value: string }>;
+}
+
+export interface CreateContactPayload {
+  name: string;
+  emailaddress: string;
+  client_id?: number;
+  phonenumber?: string;
+  site_id?: number;
 }
 
 export interface HaloTicketType {
@@ -41,6 +56,14 @@ export interface HaloAgent {
   inactive?: boolean;
 }
 
+export interface HaloPriority {
+  id: number;
+  name: string;
+  priorityid?: number;
+  colour?: string;
+  inactive?: boolean;
+}
+
 export interface HaloTicket {
   id: number;
   summary: string;
@@ -53,10 +76,14 @@ export interface HaloTicket {
   user_name?: string;
   agent_id?: number;
   agent_name?: string;
+  priority_id?: number;
+  priorityname?: string;
   tickettype_id?: number;
   category_1?: string;
   dateoccurred?: string;
   dateopened?: string;
+  /** ISO date (YYYY-MM-DD or full ISO). Halo's canonical name is "target_date"; some tenants expose "deadlinedate" or "duedate" on read. */
+  target_date?: string;
   customfields?: Array<{ name: string; value: unknown }>;
 }
 
@@ -88,6 +115,12 @@ export interface CreateActionPayload {
   emailsubject?: string;
   /** Decimal hours spent on this action (e.g., 0.25 for 15 minutes). */
   time_taken?: number;
+  /** RFC 5322 Message-ID of the source email — Halo threads on this natively. */
+  internetmessageid?: string;
+  /** Parent's Message-ID from the In-Reply-To header. */
+  inreplyto?: string;
+  /** Space-separated ancestor Message-IDs from the References header. */
+  references?: string;
 }
 
 export interface CreateTicketPayload {
@@ -102,6 +135,14 @@ export interface CreateTicketPayload {
   category_1?: string;
   attachments?: HaloAttachmentInline[];
   customfields?: Array<{ name: string; value: string | number | boolean }>;
+  /** Email source fields — when present, Halo creates the initial action as an email
+   *  and stamps internetmessageid on it, enabling native RFC-based threading. */
+  emailfrom?: string;
+  emailfromname?: string;
+  emailsubject?: string;
+  internetmessageid?: string;
+  inreplyto?: string;
+  references?: string;
 }
 
 /** Partial update payload for an existing ticket. Halo accepts mutated fields only. */
@@ -110,4 +151,20 @@ export interface UpdateTicketPayload {
   status_id?: number;
   agent_id?: number;
   priority_id?: number;
+  customfields?: Array<{ name: string; value: string | number | boolean }>;
+  /** ISO date string for the ticket due / target date. */
+  target_date?: string;
+}
+
+/**
+ * Knowledge base article shape from /KBArticle.
+ * Body lives in `faq_answer` on most tenants; some older tenants surface it under `details`.
+ * Callers should try faq_answer first, then fall back to details.
+ */
+export interface HaloKbArticle {
+  id: number;
+  name: string;
+  faq_answer?: string;
+  details?: string;
+  tags?: Array<{ value: string }>;
 }

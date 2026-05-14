@@ -45,12 +45,21 @@ npm run validate-manifest    # office-addin-manifest validate manifest.json
 
 Manifest validation needs network access to `developer.microsoft.com` for the schema fetch.
 
+## Threading model
+
+Email-to-ticket threading uses RFC 5322 headers — no Halo custom fields, no admin setup.
+
+- Halo's built-in email intake natively stamps `internetmessageid` on every Action it creates from an incoming email.
+- This plugin does the same: when it appends an email or creates a ticket from an email, it sends `internetmessageid`, `inreplyto`, and `references` (space-separated) on the Action / Ticket payload.
+- Resolving "which ticket(s) does this email belong to": collect the current email's Message-ID plus its `In-Reply-To` and `References` ancestors, then query `/Actions?internetmessageid=<id>` for each and dedupe the resulting `ticket_id`s. See `findTicketsForEmail` in `src/lib/halo-api.ts`.
+- The In-Reply-To and References headers aren't on `Office.context.mailbox.item` directly — they require `getAllInternetHeadersAsync()`, which is async and Mailbox 1.8+. `getCurrentEmailContext()` falls back to `references: []` on older Outlook.
+- Message-IDs are normalized to have angle brackets stripped everywhere.
+
 ## Gotchas
 
-- **Halo API payload variations** — Halo's REST endpoints vary slightly between versions. Three places to watch:
-  1. Custom-field query params: `?field_X=` vs `?customfield_X=` depending on tenant version. Currently using `field_X`.
-  2. Inline attachment field name: `data_base64` vs `data` vs `base64`. Currently using `data_base64`.
-  3. Action `outcome` strings are tenant-configurable (`"Email Received"` is the assumed default).
+- **Halo API payload variations** — Halo's REST endpoints vary slightly between versions. Two places to watch:
+  1. Inline attachment field name: `data_base64` vs `data` vs `base64`. Currently using `data_base64`.
+  2. Action `outcome` strings are tenant-configurable (`"Email Received"` is the assumed default).
   If something breaks at runtime, try the alternates before assuming a deeper bug.
 - **Office.js loads from MS CDN**, not from npm. The `<script>` tag in `index.html` and `auth/callback.html` pulls it. `@types/office-js` provides the TS types.
 - **Office Dialog API for OAuth** — `displayDialogAsync` requires HTTPS even for localhost dev. Use `office-addin-dev-certs` or a tunnel.
@@ -69,7 +78,6 @@ Manifest validation needs network access to `developer.microsoft.com` for the sc
 ## Likely first tasks after handoff
 
 1. Replace the placeholder developer info in `manifest.json` (privacyUrl, termsOfUseUrl, etc.) once you have the real URLs.
-2. Test against a real Halo tenant — settle the three payload variations listed under Gotchas.
+2. Test against a real Halo tenant — settle the payload variations listed under Gotchas.
 3. Set up the EasyPanel deployment for `tools.iusehalo.com`.
 4. Register the Halo Connect app in the Rising Tide tenant and run the first end-to-end auth.
-5. v1.5: write a Rewst workflow / Halo intake rule that reads `CFOutlookConversationId` and `CFOutlookInternetMessageId` from inbound replies and threads them to existing tickets, replacing Halo's subject-only matching for the sales mailbox.

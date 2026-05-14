@@ -9,8 +9,11 @@ import type {
   HaloTicketType,
   HaloStatus,
   HaloAgent,
+  HaloKbArticle,
+  HaloPriority,
   CreateTicketPayload,
   CreateActionPayload,
+  CreateContactPayload,
   UpdateTicketPayload,
 } from "../types/halo";
 
@@ -102,6 +105,33 @@ export async function searchClients(query: string, limit = 25): Promise<HaloClie
   return Array.isArray(res) ? res : res.clients;
 }
 
+/** Free-text ticket search — used by the compose surface to insert ticket links. */
+export async function searchTickets(query: string, limit = 25): Promise<HaloTicket[]> {
+  const q = new URLSearchParams({
+    search: query,
+    pageinate: "false",
+    count: String(limit),
+  });
+  const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
+  return Array.isArray(res) ? res : res.tickets;
+}
+
+/** Free-text KB article search — used by the compose surface to insert article snippets. */
+export async function searchKbArticles(query: string, limit = 25): Promise<HaloKbArticle[]> {
+  const q = new URLSearchParams({
+    search: query,
+    pageinate: "false",
+    count: String(limit),
+  });
+  // Halo's KB collection wrapper is inconsistent across versions — some tenants return a bare array,
+  // others return { articles: [...] } or { kbarticles: [...] }. Normalize to an array.
+  const res = await call<
+    { articles?: HaloKbArticle[]; kbarticles?: HaloKbArticle[] } | HaloKbArticle[]
+  >(`/KBArticle?${q}`);
+  if (Array.isArray(res)) return res;
+  return res.articles ?? res.kbarticles ?? [];
+}
+
 export async function listOpenTicketsForClient(clientId: number): Promise<HaloTicket[]> {
   const q = new URLSearchParams({
     client_id: String(clientId),
@@ -112,16 +142,54 @@ export async function listOpenTicketsForClient(clientId: number): Promise<HaloTi
   return Array.isArray(res) ? res : res.tickets;
 }
 
-export async function findTicketsByConversationId(
-  conversationId: string,
-  customFieldName = "CFOutlookConversationId",
-): Promise<HaloTicket[]> {
-  const q = new URLSearchParams({
-    [`field_${customFieldName}`]: conversationId,
-    pageinate: "false",
-  });
-  const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
-  return Array.isArray(res) ? res : res.tickets;
+/**
+ * Resolve a set of RFC Message-IDs (the current email + In-Reply-To + References)
+ * to the Halo tickets they belong to. Threading works because Halo's email intake
+ * and our own appendAction calls both stamp `internetmessageid` on each Action.
+ */
+export async function findTicketsForEmail(messageIds: string[]): Promise<HaloTicket[]> {
+  const ids = Array.from(
+    new Set(messageIds.map((id) => id?.trim()).filter((id): id is string => !!id)),
+  );
+  if (ids.length === 0) return [];
+
+  const perId = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const q = new URLSearchParams({
+          internetmessageid: id,
+          pageinate: "false",
+        });
+        const res = await call<{ actions: HaloAction[] } | HaloAction[]>(`/Actions?${q}`);
+        return Array.isArray(res) ? res : res.actions ?? [];
+      } catch {
+        // A single bad ID (or a Halo version that 4xxs on unknown filters) shouldn't
+        // blank the whole conversation pane.
+        return [];
+      }
+    }),
+  );
+
+  const ticketIds = Array.from(
+    new Set(
+      perId
+        .flat()
+        .map((a) => a.ticket_id)
+        .filter((tid): tid is number => typeof tid === "number" && tid > 0),
+    ),
+  );
+  if (ticketIds.length === 0) return [];
+
+  const tickets = await Promise.all(
+    ticketIds.map(async (tid) => {
+      try {
+        return await call<HaloTicket | undefined>(`/Tickets/${tid}`);
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  return tickets.filter((t): t is HaloTicket => !!t && typeof t.id === "number");
 }
 
 // ---------- Reference data (cached in-memory for the session) ----------
@@ -129,6 +197,7 @@ export async function findTicketsByConversationId(
 let _ticketTypesCache: HaloTicketType[] | undefined;
 let _agentsCache: HaloAgent[] | undefined;
 let _statusesCache: HaloStatus[] | undefined;
+let _prioritiesCache: HaloPriority[] | undefined;
 
 export async function listTicketTypes(force = false): Promise<HaloTicketType[]> {
   if (_ticketTypesCache && !force) return _ticketTypesCache;
@@ -157,10 +226,20 @@ export async function listStatuses(force = false): Promise<HaloStatus[]> {
   return _statusesCache;
 }
 
+export async function listPriorities(force = false): Promise<HaloPriority[]> {
+  if (_prioritiesCache && !force) return _prioritiesCache;
+  const res = await call<{ priorities: HaloPriority[] } | HaloPriority[]>(
+    "/Priority?includeinactive=false",
+  );
+  _prioritiesCache = (Array.isArray(res) ? res : res.priorities).filter((p) => !p.inactive);
+  return _prioritiesCache;
+}
+
 export function clearReferenceCache() {
   _ticketTypesCache = undefined;
   _agentsCache = undefined;
   _statusesCache = undefined;
+  _prioritiesCache = undefined;
 }
 
 // ---------- Current user → Halo agent ----------
@@ -206,9 +285,72 @@ export async function createTicket(payload: CreateTicketPayload): Promise<HaloTi
   return res[0];
 }
 
-/** Apply a partial update to an existing ticket (status / agent / priority). */
+/** Apply a partial update to an existing ticket (status / agent / priority / custom fields). */
 export async function updateTicket(payload: UpdateTicketPayload): Promise<HaloTicket> {
   const res = await call<HaloTicket[]>("/Tickets", {
+    method: "POST",
+    body: JSON.stringify([payload]),
+  });
+  return res[0];
+}
+
+/** Full client record — includes assigned account manager and other fields not in list results. */
+export async function getClientDetails(clientId: number): Promise<HaloClient> {
+  return await call<HaloClient>(`/Client/${clientId}`);
+}
+
+/**
+ * Asynchronous stats for the contact dossier: open ticket count and last activity time.
+ * Both calls are best-effort — any failure degrades gracefully to a zero count so the
+ * dossier still renders the rest of its data.
+ */
+export async function getContactStats(
+  userId: number,
+): Promise<{ openTicketCount: number; lastActivityAt?: string }> {
+  let openTicketCount = 0;
+  let lastActivityAt: string | undefined;
+
+  try {
+    const q = new URLSearchParams({
+      user_id: String(userId),
+      open_only: "true",
+      count: "true",
+      pageinate: "false",
+    });
+    const res = await call<{ count?: number; tickets?: HaloTicket[] } | HaloTicket[]>(
+      `/Tickets?${q}`,
+    );
+    if (Array.isArray(res)) {
+      openTicketCount = res.length;
+    } else if (typeof res.count === "number") {
+      openTicketCount = res.count;
+    } else if (Array.isArray(res.tickets)) {
+      openTicketCount = res.tickets.length;
+    }
+  } catch {
+    /* swallow — stats are decorative */
+  }
+
+  try {
+    const q = new URLSearchParams({
+      user_id: String(userId),
+      count: "1",
+      orderbydesc: "datetime",
+      pageinate: "false",
+    });
+    const res = await call<{ actions?: HaloAction[] } | HaloAction[]>(`/Actions?${q}`);
+    const arr = Array.isArray(res) ? res : res.actions ?? [];
+    lastActivityAt = arr[0]?.datetime;
+  } catch {
+    /* swallow — stats are decorative */
+  }
+
+  return { openTicketCount, lastActivityAt };
+}
+
+/** Create a new contact (HaloPSA "user"). Mirrors createTicket's array-wrapped POST shape. */
+export async function createContact(payload: CreateContactPayload): Promise<HaloUser> {
+  const res = await call<HaloUser[]>("/Users", {
     method: "POST",
     body: JSON.stringify([payload]),
   });

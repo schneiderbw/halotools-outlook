@@ -19,6 +19,9 @@ export default defineConfig({
         // OAuth callback page — separate entry so it can run standalone in the Office Dialog.
         // Lives at <root>/auth/callback.html so Vite emits dist/auth/callback.html.
         callback: resolve(__dirname, "auth/callback.html"),
+        // Compose-surface task pane — mounted in the mailCompose runtime declared in manifest.json.
+        // Emits dist/compose/index.html, served at /outlook/compose/.
+        compose: resolve(__dirname, "compose/index.html"),
         // Admin setup wizard — generates per-tenant manifest .zip for M365 upload.
         // Standalone page (no Office.js); served at /outlook/setup/.
         setup: resolve(__dirname, "setup/index.html"),
