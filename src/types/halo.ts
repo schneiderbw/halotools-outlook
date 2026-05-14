@@ -41,6 +41,14 @@ export interface HaloAgent {
   inactive?: boolean;
 }
 
+export interface HaloPriority {
+  id: number;
+  name: string;
+  priorityid?: number;
+  colour?: string;
+  inactive?: boolean;
+}
+
 export interface HaloTicket {
   id: number;
   summary: string;
@@ -53,10 +61,14 @@ export interface HaloTicket {
   user_name?: string;
   agent_id?: number;
   agent_name?: string;
+  priority_id?: number;
+  priorityname?: string;
   tickettype_id?: number;
   category_1?: string;
   dateoccurred?: string;
   dateopened?: string;
+  /** ISO date (YYYY-MM-DD or full ISO). Halo's canonical name is "target_date"; some tenants expose "deadlinedate" or "duedate" on read. */
+  target_date?: string;
   customfields?: Array<{ name: string; value: unknown }>;
 }
 
@@ -110,4 +122,6 @@ export interface UpdateTicketPayload {
   status_id?: number;
   agent_id?: number;
   priority_id?: number;
+  /** ISO date string for the ticket due / target date. */
+  target_date?: string;
 }
