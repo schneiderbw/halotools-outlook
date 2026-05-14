@@ -10,3 +10,4 @@ dist/
 coverage/
 dist-node/
 tsconfig.tsbuildinfo
+.claude/
