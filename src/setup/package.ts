@@ -1,9 +1,24 @@
-import { zipSync, strToU8 } from "fflate";
+import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 
 export interface TenantInput {
   haloBaseUrl: string;
   clientId: string;
   appName?: string;
+  /**
+   * Pre-existing manifest GUID. When set, the regenerated package keeps the
+   * same `id` so M365 admin sees this as an update to the deployed app
+   * instead of a brand-new install. Leave undefined for first-time setup.
+   */
+  existingAppId?: string;
+}
+
+export interface ExtractedManifestFields {
+  /** GUID of the existing app — pass back as `existingAppId` to keep updates in place. */
+  id: string;
+  /** Pre-filled from the embedded ?halo= query param on the runtime page URL. */
+  haloBaseUrl?: string;
+  /** Pre-filled from the embedded ?clientId= query param. */
+  clientId?: string;
 }
 
 interface ManifestIcon {
@@ -52,7 +67,8 @@ function hostnameOf(url: string): string {
 /**
  * Build a per-tenant manifest by taking the generic published manifest
  * and overlaying tenant-specific fields:
- *  - Fresh GUID so M365 treats it as a distinct app per MSP
+ *  - GUID: keeps `input.existingAppId` when provided so M365 admin sees an
+ *    update to the deployed app, otherwise mints a fresh one.
  *  - validDomains extended with the MSP's Halo host
  *  - Runtime page URL carries ?halo=...&clientId=... so the SPA self-configures
  *    on first launch and skips the in-app config screen
@@ -65,7 +81,7 @@ export function buildManifest(template: Manifest, input: TenantInput): Manifest 
   }).toString();
 
   const cloned: Manifest = JSON.parse(JSON.stringify(template));
-  cloned.id = crypto.randomUUID();
+  cloned.id = input.existingAppId ?? crypto.randomUUID();
 
   const validDomains = new Set(cloned.validDomains ?? []);
   validDomains.add(haloHost);
@@ -145,4 +161,55 @@ export async function fetchTemplate(url: string): Promise<Manifest> {
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error(`Failed to fetch manifest template: ${r.status}`);
   return (await r.json()) as Manifest;
+}
+
+/** Read a manifest.json out of a zip (or accept a raw manifest.json). */
+function extractManifestJson(bytes: Uint8Array, filename: string): Manifest {
+  // Raw JSON file path.
+  if (filename.toLowerCase().endsWith(".json")) {
+    return JSON.parse(strFromU8(bytes)) as Manifest;
+  }
+  // Zip path — look for manifest.json at any depth (Microsoft's zip flow
+  // accepts it at the root, but some admins zip a folder; tolerate both).
+  const entries = unzipSync(bytes);
+  const key =
+    Object.keys(entries).find((k) => k.toLowerCase() === "manifest.json") ??
+    Object.keys(entries).find((k) => k.toLowerCase().endsWith("/manifest.json"));
+  if (!key) throw new Error("No manifest.json found in the uploaded file.");
+  return JSON.parse(strFromU8(entries[key])) as Manifest;
+}
+
+/**
+ * Extract the existing app's GUID + embedded Halo URL / Client ID from a
+ * previously-generated package (or a bare manifest.json). The wizard uses
+ * this to pre-fill the form when an admin uploads their current deployment
+ * to regenerate — keeping the same GUID so M365 treats it as an update,
+ * not a fresh install.
+ */
+export async function readExistingManifest(file: File): Promise<ExtractedManifestFields> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const manifest = extractManifestJson(bytes, file.name);
+
+  if (!manifest.id || typeof manifest.id !== "string") {
+    throw new Error("Manifest is missing an `id` field.");
+  }
+
+  // Pull halo/clientId from the runtime page URL the previous wizard run baked in.
+  let haloBaseUrl: string | undefined;
+  let clientId: string | undefined;
+  for (const ext of manifest.extensions ?? []) {
+    for (const rt of ext.runtimes ?? []) {
+      try {
+        const u = new URL(rt.code.page);
+        const h = u.searchParams.get("halo");
+        const c = u.searchParams.get("clientId");
+        if (h && !haloBaseUrl) haloBaseUrl = h;
+        if (c && !clientId) clientId = c;
+      } catch {
+        /* malformed URL — skip */
+      }
+    }
+  }
+
+  return { id: manifest.id, haloBaseUrl, clientId };
 }
