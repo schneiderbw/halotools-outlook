@@ -22,6 +22,9 @@ export interface HaloClient {
   client_email_address_domain?: string;
   accountmanager_name?: string;
   accountmanager_id?: number;
+  /** Default site Halo associates new users with. Required to create a contact. */
+  main_site_id?: number;
+  main_site_name?: string;
   tags?: Array<{ value: string }>;
 }
 

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Halo on-send handler</title>
+    <script>
+      // The launch event runtime can be reached over plain HTTP if a redirect
+      // slips through; force HTTPS so token storage stays secure.
+      (function () {
+        if (
+          location.protocol === "http:" &&
+          location.hostname !== "localhost" &&
+          location.hostname !== "127.0.0.1"
+        ) {
+          location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+        }
+      })();
+    </script>
+    <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+    <script src="/outlook/launchevent.js"></script>
+  </head>
+  <body>
+    <!-- Headless: this page never renders. Outlook spawns it in the background
+         to run the on-send handler registered via Office.actions.associate. -->
+  </body>
+</html>

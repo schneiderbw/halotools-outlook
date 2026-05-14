@@ -468,13 +468,30 @@ function CreateContactDialog({
       setError("Name and email are required.");
       return;
     }
+    if (!selectedClient) {
+      setError("Pick a client first — Halo requires one for new contacts.");
+      return;
+    }
     setSubmitting(true);
     setError(undefined);
     try {
+      // Halo requires a site_id alongside client_id when creating a user.
+      // The client list response doesn't include main_site_id, so resolve it
+      // via the client-detail endpoint right before the create call.
+      let siteId = selectedClient.main_site_id;
+      if (siteId == null) {
+        try {
+          const detail = await getClientDetails(selectedClient.id);
+          siteId = detail.main_site_id;
+        } catch {
+          /* fall through; Halo will reject and surface its own error */
+        }
+      }
       const created = await createContact({
         name: name.trim(),
         emailaddress: emailAddr.trim(),
-        client_id: selectedClient?.id,
+        client_id: selectedClient.id,
+        site_id: siteId,
         phonenumber: phone.trim() || undefined,
       });
       // Halo's response may not echo back client_name; fill from local selection.

@@ -1,10 +1,9 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Text,
   Spinner,
   makeStyles,
   tokens,
-  Button,
   Input,
   Avatar,
   Badge,
@@ -34,17 +33,13 @@ import {
   findClientByDomain,
   searchTickets,
   searchKbArticles,
-  appendAction,
 } from "../lib/halo-api";
 import {
   getRecipients,
   insertIntoBody,
-  saveDraft,
-  getComposeBody,
-  getComposeSubject,
   domainOf,
 } from "../lib/office";
-import { getDefaults } from "../lib/defaults";
+import { useDebouncedSearch } from "../lib/use-debounced-search";
 import type {
   HaloUser,
   HaloClient,
@@ -364,36 +359,11 @@ function InsertTicketSection() {
   const styles = useStyles();
   const cfg = getConfig() as TenantConfig;
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<HaloTicket[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | undefined>();
   const [toast, setToast] = useState<string | undefined>();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim().length < 2) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const tickets = await searchTickets(query.trim());
-        setResults(tickets);
-        setError(undefined);
-      } catch (e) {
-        setError((e as Error).message);
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
+  const [actionError, setActionError] = useState<string | undefined>();
+  const { results, loading, error: searchError } = useDebouncedSearch(query, searchTickets);
+  const error = actionError ?? searchError;
+  const setError = setActionError;
 
   const onPick = async (ticket: HaloTicket) => {
     try {
@@ -474,36 +444,11 @@ function InsertKbSection() {
   const styles = useStyles();
   const cfg = getConfig() as TenantConfig;
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<HaloKbArticle[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | undefined>();
   const [toast, setToast] = useState<string | undefined>();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim().length < 2) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const articles = await searchKbArticles(query.trim());
-        setResults(articles);
-        setError(undefined);
-      } catch (e) {
-        setError((e as Error).message);
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
+  const [actionError, setActionError] = useState<string | undefined>();
+  const { results, loading, error: searchError } = useDebouncedSearch(query, searchKbArticles);
+  const error = actionError ?? searchError;
+  const setError = setActionError;
 
   const onPick = async (article: HaloKbArticle) => {
     try {
@@ -606,78 +551,74 @@ function InsertKbSection() {
 
 function LogOnSendSection() {
   const styles = useStyles();
+  // The actual "this draft will log on send" flag lives in the item's
+  // CustomProperties bag because the launch-event runtime can't read this
+  // React state. We mirror it locally for the UI.
   const [enabled, setEnabled] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<HaloTicket[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<number | undefined>();
-  const [loadingSearch, setLoadingSearch] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  const [toast, setToast] = useState<string | undefined>();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [armed, setArmed] = useState(false);
+  const { results, loading: loadingSearch, error } = useDebouncedSearch(query, searchTickets);
 
+  // Rehydrate any previously-armed ticket on this draft so the user sees it
+  // sticking when they reopen the pane.
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim().length < 2) {
-      setResults([]);
-      setLoadingSearch(false);
-      return;
-    }
-    setLoadingSearch(true);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const tickets = await searchTickets(query.trim());
-        setResults(tickets);
-        setError(undefined);
-      } catch (e) {
-        setError((e as Error).message);
-        setResults([]);
-      } finally {
-        setLoadingSearch(false);
+    const item = Office.context.mailbox.item;
+    if (!item) return;
+    item.loadCustomPropertiesAsync((r) => {
+      if (r.status !== Office.AsyncResultStatus.Succeeded) return;
+      const existing = r.value.get("haloLogTicketId");
+      if (existing) {
+        setEnabled(true);
+        setSelectedTicketId(Number(existing));
+        setArmed(true);
       }
-    }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
+    });
+  }, []);
 
   const selectedTicket = results.find((t) => t.id === selectedTicketId);
 
-  const appendNow = async () => {
-    if (!selectedTicketId) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      // Forces Outlook to persist the in-flight draft to the user's Drafts folder.
-      // Without this, body / subject reads can race with the user still editing.
-      await saveDraft();
-      const [html, subject, recipients] = await Promise.all([
-        getComposeBody("html"),
-        getComposeSubject(),
-        getRecipients().catch(() => ({ to: [] as string[], cc: [], bcc: [] })),
-      ]);
-      const toList = recipients.to.join(", ");
-      const action = await appendAction({
-        ticket_id: selectedTicketId,
-        outcome: getDefaults().defaultAppendOutcome ?? "Email Received",
-        note: html,
-        emailsubject: subject || undefined,
-        // The current Outlook user is the sender for compose-surface messages.
-        emailfrom: Office.context.mailbox.userProfile?.emailAddress,
-        emailfromname: Office.context.mailbox.userProfile?.displayName,
-        // Tack the To list onto the subject line so it shows in Halo's action history
-        // without needing a dedicated field. (Halo's CreateActionPayload has no To field.)
-        ...(toList ? { emailsubject: `${subject} — to: ${toList}` } : {}),
+  // Persist the picked ticket onto the draft so the on-send handler can find
+  // it. Setting null clears it (used when user disables the toggle).
+  const writeCustomProp = (ticketId: number | null) => {
+    return new Promise<void>((resolve) => {
+      const item = Office.context.mailbox.item;
+      if (!item) {
+        resolve();
+        return;
+      }
+      item.loadCustomPropertiesAsync((r) => {
+        if (r.status !== Office.AsyncResultStatus.Succeeded) {
+          resolve();
+          return;
+        }
+        const cp = r.value;
+        // Office.js CustomProperties.set is typed as accepting string; we
+        // serialize numbers, and "" doubles as our cleared sentinel.
+        cp.set("haloLogTicketId", ticketId == null ? "" : String(ticketId));
+        cp.saveAsync(() => resolve());
       });
-      // Threading now happens via RFC Message-ID stamped on the action when read-surface
-      // appends — compose items don't expose internetMessageId until they're sent, so we
-      // rely on the user (or recipient) replying later for the thread to attach.
-      setToast(`Appended to #${action.ticket_id} (manual fallback — see hint)`);
-      setTimeout(() => setToast(undefined), 5000);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
+    });
+  };
+
+  const toggle = async (next: boolean) => {
+    setEnabled(next);
+    if (!next) {
+      await writeCustomProp(null);
+      setArmed(false);
+    } else if (selectedTicketId) {
+      await writeCustomProp(selectedTicketId);
+      setArmed(true);
+    }
+  };
+
+  const pickTicket = async (id: number | undefined) => {
+    setSelectedTicketId(id);
+    if (enabled && id) {
+      await writeCustomProp(id);
+      setArmed(true);
+    } else {
+      setArmed(false);
     }
   };
 
@@ -692,8 +633,8 @@ function LogOnSendSection() {
       <div className={styles.toggleSection}>
         <Switch
           checked={enabled}
-          onChange={(_, d) => setEnabled(d.checked)}
-          label="Log this email to a ticket"
+          onChange={(_, d) => toggle(d.checked)}
+          label="Log this email to a ticket when I click Send"
         />
         {enabled && (
           <>
@@ -717,7 +658,7 @@ function LogOnSendSection() {
                     selectedTicket ? `#${selectedTicket.id} — ${selectedTicket.summary}` : ""
                   }
                   onOptionSelect={(_, d) =>
-                    setSelectedTicketId(d.optionValue ? Number(d.optionValue) : undefined)
+                    pickTicket(d.optionValue ? Number(d.optionValue) : undefined)
                   }
                 >
                   {results.map((t) => (
@@ -735,30 +676,18 @@ function LogOnSendSection() {
             ) : query.trim().length >= 2 ? (
               <Text className={styles.empty}>No tickets found.</Text>
             ) : null}
-            <Text className={styles.hint}>
-              On-send auto-logging is not yet wired (requires a LaunchEvent runtime and
-              the SendItem permission). Click "Append now" to manually log the draft to
-              the selected ticket; Outlook will save the draft first so the body and
-              subject are stable.
-            </Text>
-            <Button
-              appearance="primary"
-              disabled={!selectedTicketId || busy}
-              onClick={appendNow}
-              icon={busy ? <Spinner size="tiny" /> : <Send24Regular />}
-            >
-              {busy ? "Appending…" : "Append now"}
-            </Button>
+            {armed && selectedTicketId && (
+              <div className={styles.toast}>
+                <CheckmarkCircle16Filled />
+                <span>
+                  Ready — this draft will be logged to #{selectedTicketId} when you click Send.
+                </span>
+              </div>
+            )}
             {error && (
               <MessageBar intent="error">
                 <MessageBarBody>{error}</MessageBarBody>
               </MessageBar>
-            )}
-            {toast && (
-              <div className={styles.toast}>
-                <CheckmarkCircle16Filled />
-                <span>{toast}</span>
-              </div>
             )}
           </>
         )}
