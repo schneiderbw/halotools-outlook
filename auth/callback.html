@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Signing in…</title>
+    <script>
+      (function () {
+        if (
+          location.protocol === "http:" &&
+          location.hostname !== "localhost" &&
+          location.hostname !== "127.0.0.1"
+        ) {
+          location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+        }
+      })();
+    </script>
     <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
     <style>
       html, body { height: 100%; margin: 0; font-family: "Segoe UI", system-ui, sans-serif; }

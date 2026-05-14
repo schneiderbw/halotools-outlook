@@ -36,8 +36,15 @@ export interface CreateContactPayload {
 export interface HaloTicketType {
   id: number;
   name: string;
+  /** Surface where this type is usable: "ticket", "opportunity", "change", "project", etc. */
   use: string;
   inactive?: boolean;
+  /** Halo flag set when this type is logging-only and not selectable in normal create flows. */
+  isresponseonly?: boolean;
+  /** Halo per-agent allowlist field — populated when the type is restricted to specific agents. */
+  show_restricted?: boolean;
+  /** Some Halo versions expose an explicit "agents can create" flag. */
+  allow_agent_creation?: boolean;
 }
 
 export interface HaloStatus {
@@ -62,6 +69,12 @@ export interface HaloPriority {
   priorityid?: number;
   colour?: string;
   inactive?: boolean;
+  /**
+   * SLA scoping. Halo priorities are defined per-SLA — a priority returned from
+   * /Priority without an sla_id is global; otherwise it only applies to tickets
+   * on that SLA. We filter client-side against the ticket's sla_id.
+   */
+  sla_id?: number;
 }
 
 export interface HaloTicket {
@@ -74,10 +87,18 @@ export interface HaloTicket {
   client_name?: string;
   user_id?: number;
   user_name?: string;
+  // Halo's REST shape for the assigned agent is inconsistent across versions:
+  // some tenants return agent_id/agent_name, others agentname or assignedagent_*,
+  // and the nested includedetails response uses `agent: { id, name }`.
   agent_id?: number;
   agent_name?: string;
+  agentname?: string;
+  assignedagent_id?: number;
+  assignedagent_name?: string;
+  agent?: { id?: number; name?: string };
   priority_id?: number;
   priorityname?: string;
+  sla_id?: number;
   tickettype_id?: number;
   category_1?: string;
   dateoccurred?: string;

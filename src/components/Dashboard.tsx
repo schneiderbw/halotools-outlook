@@ -14,7 +14,11 @@ import {
   MenuItem,
   MenuPopover,
 } from "@fluentui/react-components";
-import { MoreHorizontal24Regular, ArrowClockwise24Regular } from "@fluentui/react-icons";
+import {
+  MoreHorizontal24Regular,
+  ArrowClockwise24Regular,
+  ArrowUpRight16Regular,
+} from "@fluentui/react-icons";
 import { ContactCard } from "./ContactCard";
 import { TicketList } from "./TicketList";
 import { LogActions } from "./LogActions";
@@ -26,7 +30,7 @@ import {
   findTicketsForEmail,
 } from "../lib/halo-api";
 import { signOut } from "../lib/auth";
-import { clearConfig } from "../lib/config";
+import { clearConfig, getConfig } from "../lib/config";
 import { domainOf, type EmailContext } from "../lib/office";
 import type { HaloUser, HaloClient, HaloTicket } from "../types/halo";
 
@@ -256,6 +260,25 @@ export function Dashboard({ email, onSignedOut }: Props) {
             onContactChange={setContact}
             onClientChange={setClient}
           />
+
+          <Divider />
+
+          {/* Primary actions sit above the ticket lists so they're always
+              visible without scrolling, regardless of how many tickets a
+              client has. */}
+          <LogActions
+            email={email}
+            client={client}
+            contact={contact}
+            candidateTickets={[
+              ...threadTickets,
+              ...openTickets.filter((t) => !threadTickets.find((tt) => tt.id === t.id)),
+            ]}
+            preferAppend={threadTickets.length > 0}
+          />
+
+          <QuickHaloLinks contact={contact} client={client} />
+
           <Divider />
 
           {threadTickets.length > 0 && (
@@ -279,19 +302,72 @@ export function Dashboard({ email, onSignedOut }: Props) {
               onTicketUpdated={handleTicketUpdated}
             />
           )}
-
-          <Divider />
-          <LogActions
-            email={email}
-            client={client}
-            contact={contact}
-            candidateTickets={[
-              ...threadTickets,
-              ...openTickets.filter((t) => !threadTickets.find((tt) => tt.id === t.id)),
-            ]}
-            preferAppend={threadTickets.length > 0}
-          />
         </div>
+      )}
+    </div>
+  );
+}
+
+function QuickHaloLinks({
+  contact,
+  client,
+}: {
+  contact?: HaloUser;
+  client?: HaloClient;
+}) {
+  const haloUrl = getConfig()?.haloBaseUrl;
+  if (!haloUrl) return null;
+  const open = (path: string) => {
+    const url = `${haloUrl}${path}`;
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (!w) {
+      try {
+        Office.context.ui.openBrowserWindow(url);
+      } catch {
+        window.location.href = url;
+      }
+    }
+  };
+  const hasAny = !!contact || !!client;
+  if (!hasAny) return null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 6,
+        marginTop: 4,
+      }}
+    >
+      {contact && (
+        <Button
+          size="small"
+          appearance="subtle"
+          icon={<ArrowUpRight16Regular />}
+          onClick={() => open(`/agent/?userid=${contact.id}`)}
+        >
+          Open contact
+        </Button>
+      )}
+      {client && (
+        <Button
+          size="small"
+          appearance="subtle"
+          icon={<ArrowUpRight16Regular />}
+          onClick={() => open(`/agent/?clientid=${client.id}`)}
+        >
+          Open client
+        </Button>
+      )}
+      {client && (
+        <Button
+          size="small"
+          appearance="subtle"
+          icon={<ArrowUpRight16Regular />}
+          onClick={() => open(`/agent/?showmenu=false&open_only=true&client_id=${client.id}`)}
+        >
+          All open tickets
+        </Button>
       )}
     </div>
   );

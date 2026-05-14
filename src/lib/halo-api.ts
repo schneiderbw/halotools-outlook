@@ -137,6 +137,11 @@ export async function listOpenTicketsForClient(clientId: number): Promise<HaloTi
     client_id: String(clientId),
     open_only: "true",
     pageinate: "false",
+    // Without these, Halo's list response omits agent name, priority, SLA and
+    // custom fields — the row pills then read "Unassigned" / "—" for tickets
+    // that are actually assigned.
+    includedetails: "true",
+    includeagentdetails: "true",
   });
   const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
   return Array.isArray(res) ? res : res.tickets;
@@ -206,6 +211,24 @@ export async function listTicketTypes(force = false): Promise<HaloTicketType[]> 
   );
   _ticketTypesCache = (Array.isArray(res) ? res : res.tickettypes).filter((t) => !t.inactive);
   return _ticketTypesCache;
+}
+
+/**
+ * Subset of ticket types an agent can actually choose when creating a normal ticket.
+ * Drops non-ticket uses (opportunities, change requests, projects), response-only types,
+ * and types explicitly disallowed for agent creation. Halo's list endpoint returns
+ * everything indiscriminately, so we filter client-side.
+ */
+export function ticketTypesForAgentCreate(all: HaloTicketType[]): HaloTicketType[] {
+  return all.filter((t) => {
+    if (t.inactive) return false;
+    if (t.isresponseonly) return false;
+    if (t.allow_agent_creation === false) return false;
+    // `use` is typically "ticket" for the agent's main ticket form. Anything else
+    // (opportunity, change, project, kb, etc.) belongs in a different surface.
+    if (t.use && t.use !== "ticket") return false;
+    return true;
+  });
 }
 
 export async function listAgents(force = false): Promise<HaloAgent[]> {

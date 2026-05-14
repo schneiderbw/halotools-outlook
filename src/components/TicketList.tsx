@@ -502,6 +502,13 @@ function PriorityPill({
   const current = priorities.find((p) => p.id === ticket.priority_id);
   const label = ticket.priorityname ?? current?.name ?? "Priority";
 
+  // Halo priorities are defined per-SLA. Showing every priority from /Priority
+  // includes ones that aren't valid for this ticket's SLA and Halo will reject
+  // the update. A priority without sla_id is global and always applies.
+  const applicable = priorities.filter(
+    (p) => !p.sla_id || !ticket.sla_id || p.sla_id === ticket.sla_id,
+  );
+
   if (busy) {
     return (
       <span className={styles.pillSpinner}>
@@ -529,7 +536,7 @@ function PriorityPill({
       </PopoverTrigger>
       <PopoverSurface className={styles.popoverSurface}>
         <div className={styles.popoverList}>
-          {priorities.map((p) => (
+          {applicable.map((p) => (
             <button
               key={p.id}
               className={
@@ -555,9 +562,9 @@ function PriorityPill({
               <span>{p.name}</span>
             </button>
           ))}
-          {priorities.length === 0 && (
+          {applicable.length === 0 && (
             <Text size={200} italic>
-              No priorities loaded.
+              No priorities available for this ticket's SLA.
             </Text>
           )}
           {ticket.priority_id != null && ticket.priority_id !== 0 && (
@@ -602,7 +609,21 @@ function AgentPill({
     return agents.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 50);
   }, [agents, query]);
 
-  const label = ticket.agent_name ?? "Unassigned";
+  // Halo returns the assigned agent under several different field names depending on
+  // tenant version. Resolve to whichever one is populated so an assigned ticket never
+  // mis-renders as "Unassigned".
+  const agentName =
+    ticket.agent_name ||
+    ticket.agentname ||
+    ticket.assignedagent_name ||
+    ticket.agent?.name ||
+    (() => {
+      const id =
+        ticket.agent_id ?? ticket.assignedagent_id ?? ticket.agent?.id;
+      if (!id) return undefined;
+      return agents.find((a) => a.id === id)?.name;
+    })();
+  const label = agentName ?? "Unassigned";
 
   if (busy) {
     return (

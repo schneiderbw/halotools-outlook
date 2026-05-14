@@ -21,7 +21,12 @@ import {
   Input,
 } from "@fluentui/react-components";
 import { Add24Regular, Attach24Regular } from "@fluentui/react-icons";
-import { appendAction, createTicket, listTicketTypes } from "../lib/halo-api";
+import {
+  appendAction,
+  createTicket,
+  listTicketTypes,
+  ticketTypesForAgentCreate,
+} from "../lib/halo-api";
 import {
   getBody,
   fetchAllAttachments,
@@ -370,7 +375,8 @@ function CreateDialog({
     if (!open) return;
     setSummary(email.subject);
     listTicketTypes()
-      .then((types) => {
+      .then((all) => {
+        const types = ticketTypesForAgentCreate(all);
         setTicketTypes(types);
         if (!ticketTypeId && types.length === 1) setTicketTypeId(types[0].id);
       })
