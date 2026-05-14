@@ -116,9 +116,12 @@ export async function buildPackageZip(
     "manifest.json": strToU8(JSON.stringify(manifest, null, 2)),
   };
 
+  // Icon paths in the manifest are relative to /outlook/manifest.json, not to
+  // the wizard's own URL — anchor against the manifest's location explicitly.
+  const iconBase = `${window.location.origin}/outlook/`;
   await Promise.all(
     Array.from(iconPaths).map(async (rel) => {
-      const url = new URL(rel, window.location.href).toString();
+      const url = new URL(rel, iconBase).toString();
       files[rel] = await fetchBytes(url);
     }),
   );
