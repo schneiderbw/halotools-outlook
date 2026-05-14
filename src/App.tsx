@@ -55,22 +55,33 @@ export function App() {
     refreshPhase();
     refreshEmail();
 
-    // Subscribe to item selection changes (user switches between emails)
+    // Subscribe to item selection changes. Guarded because on an unpinned task pane's
+    // very first open, Office.context.mailbox can still be initializing and the
+    // addHandler call can throw before pinning establishes a persistent runtime.
+    const mailbox = Office.context?.mailbox;
     const handler = () => refreshEmail();
-    Office.context.mailbox.addHandlerAsync(
-      Office.EventType.ItemChanged,
-      handler,
-      (result) => {
-        if (result.status !== Office.AsyncResultStatus.Succeeded) {
-          // Non-fatal — just log; UI still works via initial read
-          console.warn("Failed to subscribe to ItemChanged:", result.error?.message);
-        }
-      },
-    );
+    if (mailbox?.addHandlerAsync) {
+      try {
+        mailbox.addHandlerAsync(
+          Office.EventType.ItemChanged,
+          handler,
+          (result) => {
+            if (result.status !== Office.AsyncResultStatus.Succeeded) {
+              console.warn("Failed to subscribe to ItemChanged:", result.error?.message);
+            }
+          },
+        );
+      } catch (e) {
+        console.warn("ItemChanged subscribe threw:", (e as Error).message);
+      }
+    }
 
     return () => {
-      // removeHandlerAsync removes all handlers for the event type
-      Office.context.mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
+      try {
+        Office.context?.mailbox?.removeHandlerAsync?.(Office.EventType.ItemChanged);
+      } catch {
+        /* nothing to clean up */
+      }
     };
   }, [refreshPhase, refreshEmail]);
 
