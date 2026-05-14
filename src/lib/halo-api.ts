@@ -11,6 +11,7 @@ import type {
   HaloAgent,
   CreateTicketPayload,
   CreateActionPayload,
+  CreateContactPayload,
   UpdateTicketPayload,
 } from "../types/halo";
 
@@ -245,6 +246,69 @@ export async function stampOutlookThreadFields(
   }
   if (customfields.length === 0) return;
   await updateTicket({ id: ticketId, customfields });
+}
+
+/** Full client record — includes assigned account manager and other fields not in list results. */
+export async function getClientDetails(clientId: number): Promise<HaloClient> {
+  return await call<HaloClient>(`/Client/${clientId}`);
+}
+
+/**
+ * Asynchronous stats for the contact dossier: open ticket count and last activity time.
+ * Both calls are best-effort — any failure degrades gracefully to a zero count so the
+ * dossier still renders the rest of its data.
+ */
+export async function getContactStats(
+  userId: number,
+): Promise<{ openTicketCount: number; lastActivityAt?: string }> {
+  let openTicketCount = 0;
+  let lastActivityAt: string | undefined;
+
+  try {
+    const q = new URLSearchParams({
+      user_id: String(userId),
+      open_only: "true",
+      count: "true",
+      pageinate: "false",
+    });
+    const res = await call<{ count?: number; tickets?: HaloTicket[] } | HaloTicket[]>(
+      `/Tickets?${q}`,
+    );
+    if (Array.isArray(res)) {
+      openTicketCount = res.length;
+    } else if (typeof res.count === "number") {
+      openTicketCount = res.count;
+    } else if (Array.isArray(res.tickets)) {
+      openTicketCount = res.tickets.length;
+    }
+  } catch {
+    /* swallow — stats are decorative */
+  }
+
+  try {
+    const q = new URLSearchParams({
+      user_id: String(userId),
+      count: "1",
+      orderbydesc: "datetime",
+      pageinate: "false",
+    });
+    const res = await call<{ actions?: HaloAction[] } | HaloAction[]>(`/Actions?${q}`);
+    const arr = Array.isArray(res) ? res : res.actions ?? [];
+    lastActivityAt = arr[0]?.datetime;
+  } catch {
+    /* swallow — stats are decorative */
+  }
+
+  return { openTicketCount, lastActivityAt };
+}
+
+/** Create a new contact (HaloPSA "user"). Mirrors createTicket's array-wrapped POST shape. */
+export async function createContact(payload: CreateContactPayload): Promise<HaloUser> {
+  const res = await call<HaloUser[]>("/Users", {
+    method: "POST",
+    body: JSON.stringify([payload]),
+  });
+  return res[0];
 }
 
 export { HaloApiError };

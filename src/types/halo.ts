@@ -9,6 +9,10 @@ export interface HaloUser {
   site_id?: number;
   site_name?: string;
   inactive?: boolean;
+  phonenumber?: string;
+  mobile_number?: string;
+  jobtitle?: string;
+  tags?: Array<{ value: string }>;
 }
 
 export interface HaloClient {
@@ -16,6 +20,17 @@ export interface HaloClient {
   name: string;
   inactive?: boolean;
   client_email_address_domain?: string;
+  accountmanager_name?: string;
+  accountmanager_id?: number;
+  tags?: Array<{ value: string }>;
+}
+
+export interface CreateContactPayload {
+  name: string;
+  emailaddress: string;
+  client_id?: number;
+  phonenumber?: string;
+  site_id?: number;
 }
 
 export interface HaloTicketType {
