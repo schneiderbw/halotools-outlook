@@ -29,7 +29,7 @@
     "permissions": {
       "resourceSpecific": [
         {
-          "name": "MailboxItem.Read.User",
+          "name": "MailboxItem.ReadWrite.User",
           "type": "Delegated"
         }
       ]
@@ -43,7 +43,7 @@
       "requirements": {
         "scopes": ["mail"],
         "capabilities": [
-          { "name": "Mailbox", "minVersion": "1.10" }
+          { "name": "Mailbox", "minVersion": "1.12" }
         ]
       },
       "runtimes": [
@@ -76,6 +76,35 @@
               "type": "openPage",
               "pinnable": true,
               "view": "dashboard"
+            }
+          ]
+        },
+        {
+          "id": "OnMessageSendRuntime",
+          "type": "general",
+          "code": {
+            "page": "https://tools.iusehalo.com/outlook/launchevent.html",
+            "script": "https://tools.iusehalo.com/outlook/launchevent.js"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "onMessageSendHandler",
+              "type": "executeFunction",
+              "displayName": "onMessageSendHandler"
+            }
+          ]
+        }
+      ],
+      "autoRunEvents": [
+        {
+          "events": [
+            {
+              "type": "messageSending",
+              "actionId": "onMessageSendHandler",
+              "options": {
+                "sendMode": "promptUser"
+              }
             }
           ]
         }

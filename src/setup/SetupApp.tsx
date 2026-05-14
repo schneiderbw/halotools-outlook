@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Button,
   Field,
@@ -25,6 +25,7 @@ import {
   buildPackageZip,
   downloadBlob,
   fetchTemplate,
+  readExistingManifest,
 } from "./package";
 
 type Step = "halo-url" | "register-app" | "client-id" | "done";
@@ -142,6 +143,11 @@ export function SetupApp() {
   const [step, setStep] = useState<Step>("halo-url");
   const [haloUrl, setHaloUrl] = useState("");
   const [clientId, setClientId] = useState("");
+  // When set, the regenerated package keeps this GUID so M365 admin treats
+  // the upload as an update to the existing deployment instead of a brand-new
+  // app. Populated by readExistingManifest after an admin uploads their
+  // current package.
+  const [existingAppId, setExistingAppId] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [building, setBuilding] = useState(false);
 
@@ -157,6 +163,25 @@ export function SetupApp() {
     setStep("register-app");
   };
 
+  const handleExistingPackage = async (file: File) => {
+    setError(undefined);
+    try {
+      const extracted = await readExistingManifest(file);
+      setExistingAppId(extracted.id);
+      if (extracted.haloBaseUrl) setHaloUrl(extracted.haloBaseUrl);
+      if (extracted.clientId) setClientId(extracted.clientId);
+      // Both fields pulled — jump straight to the final step so the admin
+      // just hits Download.
+      if (extracted.haloBaseUrl && extracted.clientId) {
+        setStep("client-id");
+      } else if (extracted.haloBaseUrl) {
+        setStep("register-app");
+      }
+    } catch (e) {
+      setError(`Couldn't read package: ${(e as Error).message}`);
+    }
+  };
+
   const downloadPackage = async () => {
     setError(undefined);
     setBuilding(true);
@@ -165,9 +190,13 @@ export function SetupApp() {
       const zip = await buildPackageZip(template, {
         haloBaseUrl: normalizedHalo,
         clientId: clientId.trim(),
+        existingAppId,
       });
       const slug = new URL(normalizedHalo).hostname.replace(/\./g, "-");
-      downloadBlob(zip, `halo-outlook-${slug}.zip`);
+      const filename = existingAppId
+        ? `halo-outlook-${slug}-update.zip`
+        : `halo-outlook-${slug}.zip`;
+      downloadBlob(zip, filename);
       setStep("done");
     } catch (e) {
       setError((e as Error).message);
@@ -222,7 +251,27 @@ export function SetupApp() {
                 Next
               </Button>
             </div>
+
+            <ExistingPackageUpload
+              onPick={handleExistingPackage}
+              onPasteId={(id) => {
+                setExistingAppId(id);
+                setError(undefined);
+                // Halo URL + Client ID still need answers in this branch, so
+                // keep the user on the regular wizard flow.
+              }}
+            />
           </>
+        )}
+
+        {existingAppId && step !== "halo-url" && step !== "done" && (
+          <MessageBar intent="info">
+            <MessageBarBody>
+              Update mode — reusing app ID <code>{existingAppId.slice(0, 8)}…</code>.
+              The package you download will replace the existing deployment in M365 admin
+              instead of installing a new app.
+            </MessageBarBody>
+          </MessageBar>
         )}
 
         {step === "register-app" && (
@@ -292,8 +341,12 @@ export function SetupApp() {
           <>
             <MessageBar intent="success">
               <MessageBarBody>
-                <MessageBarTitle>Package ready</MessageBarTitle>
-                Now upload it to Microsoft 365.
+                <MessageBarTitle>
+                  {existingAppId ? "Update package ready" : "Package ready"}
+                </MessageBarTitle>
+                {existingAppId
+                  ? "Upload it to Microsoft 365 — M365 will replace the existing deployment because the app ID matches."
+                  : "Now upload it to Microsoft 365."}
               </MessageBarBody>
             </MessageBar>
             <div className={styles.successBody}>
@@ -353,7 +406,14 @@ export function SetupApp() {
                 it auto-configures for your HaloPSA instance — no per-user setup.
               </Text>
               <div className={styles.buttonRow}>
-                <Button onClick={() => { setStep("halo-url"); setHaloUrl(""); setClientId(""); }}>
+                <Button
+                  onClick={() => {
+                    setStep("halo-url");
+                    setHaloUrl("");
+                    setClientId("");
+                    setExistingAppId(undefined);
+                  }}
+                >
                   Build another package
                 </Button>
               </div>
@@ -361,6 +421,95 @@ export function SetupApp() {
           </>
         )}
       </Card>
+    </div>
+  );
+}
+
+function ExistingPackageUpload({
+  onPick,
+  onPasteId,
+}: {
+  onPick: (file: File) => void;
+  onPasteId: (id: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pastedId, setPastedId] = useState("");
+  const [pasteError, setPasteError] = useState<string | undefined>();
+  const guidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  const submitId = () => {
+    const trimmed = pastedId.trim();
+    if (!guidRe.test(trimmed)) {
+      setPasteError("Enter a GUID like 10344d7a-f46f-463c-a0fb-5fbf43b3d074");
+      return;
+    }
+    setPasteError(undefined);
+    onPasteId(trimmed);
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: 16,
+        paddingTop: 12,
+        borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <Body1 style={{ color: tokens.colorNeutralForeground3 }}>
+        Updating an existing deployment? Either upload your current package or
+        paste the app ID — M365 will treat the result as an update instead of a
+        new install.
+      </Body1>
+      <div>
+        <Button
+          appearance="subtle"
+          size="small"
+          onClick={() => inputRef.current?.click()}
+        >
+          Upload existing package…
+        </Button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".zip,.json,application/zip,application/json"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onPick(file);
+            // Reset so re-picking the same file fires again.
+            e.target.value = "";
+          }}
+        />
+      </div>
+      <Field
+        label="Or paste the app ID from M365 admin"
+        hint="Microsoft 365 admin → Integrated apps → Halo → app details. It's a GUID."
+        validationState={pasteError ? "error" : undefined}
+        validationMessage={pasteError}
+      >
+        <div style={{ display: "flex", gap: 6 }}>
+          <Input
+            value={pastedId}
+            onChange={(_, d) => {
+              setPastedId(d.value);
+              if (pasteError) setPasteError(undefined);
+            }}
+            placeholder="10344d7a-f46f-463c-a0fb-5fbf43b3d074"
+            style={{ flex: 1 }}
+          />
+          <Button
+            appearance="secondary"
+            size="small"
+            disabled={!pastedId.trim()}
+            onClick={submitId}
+          >
+            Use ID
+          </Button>
+        </div>
+      </Field>
     </div>
   );
 }
