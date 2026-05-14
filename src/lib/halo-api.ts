@@ -112,26 +112,54 @@ export async function listOpenTicketsForClient(clientId: number): Promise<HaloTi
   return Array.isArray(res) ? res : res.tickets;
 }
 
-export async function findTicketsByConversationId(
-  conversationId: string,
-  customFieldName = "CFOutlookConversationId",
-): Promise<HaloTicket[]> {
-  const q = new URLSearchParams({
-    [`field_${customFieldName}`]: conversationId,
-    pageinate: "false",
-    includedetails: "true",
-  });
-  const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
-  const all = Array.isArray(res) ? res : res.tickets;
-  // Halo silently ignores filter params for custom fields it doesn't recognize
-  // (or that no ticket has populated yet), returning every ticket in the tenant.
-  // Verify each ticket actually carries the matching custom field value before
-  // claiming it belongs to this conversation.
-  return all.filter((t) =>
-    t.customfields?.some(
-      (cf) => cf.name === customFieldName && String(cf.value) === conversationId,
+/**
+ * Resolve a set of RFC Message-IDs (the current email + In-Reply-To + References)
+ * to the Halo tickets they belong to. Threading works because Halo's email intake
+ * and our own appendAction calls both stamp `internetmessageid` on each Action.
+ */
+export async function findTicketsForEmail(messageIds: string[]): Promise<HaloTicket[]> {
+  const ids = Array.from(
+    new Set(messageIds.map((id) => id?.trim()).filter((id): id is string => !!id)),
+  );
+  if (ids.length === 0) return [];
+
+  const perId = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const q = new URLSearchParams({
+          internetmessageid: id,
+          pageinate: "false",
+        });
+        const res = await call<{ actions: HaloAction[] } | HaloAction[]>(`/Actions?${q}`);
+        return Array.isArray(res) ? res : res.actions ?? [];
+      } catch {
+        // A single bad ID (or a Halo version that 4xxs on unknown filters) shouldn't
+        // blank the whole conversation pane.
+        return [];
+      }
+    }),
+  );
+
+  const ticketIds = Array.from(
+    new Set(
+      perId
+        .flat()
+        .map((a) => a.ticket_id)
+        .filter((tid): tid is number => typeof tid === "number" && tid > 0),
     ),
   );
+  if (ticketIds.length === 0) return [];
+
+  const tickets = await Promise.all(
+    ticketIds.map(async (tid) => {
+      try {
+        return await call<HaloTicket | undefined>(`/Tickets/${tid}`);
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  return tickets.filter((t): t is HaloTicket => !!t && typeof t.id === "number");
 }
 
 // ---------- Reference data (cached in-memory for the session) ----------
@@ -223,28 +251,6 @@ export async function updateTicket(payload: UpdateTicketPayload): Promise<HaloTi
     body: JSON.stringify([payload]),
   });
   return res[0];
-}
-
-/**
- * Stamp the Outlook conversation + message IDs on a ticket so future emails
- * in the same conversation can find it via findTicketsByConversationId.
- * No-ops if either ID is missing. Errors are non-fatal — the caller's primary
- * action (e.g., appending an email) already succeeded.
- */
-export async function stampOutlookThreadFields(
-  ticketId: number,
-  conversationId: string | undefined,
-  internetMessageId: string | undefined,
-): Promise<void> {
-  const customfields: Array<{ name: string; value: string }> = [];
-  if (conversationId) {
-    customfields.push({ name: "CFOutlookConversationId", value: conversationId });
-  }
-  if (internetMessageId) {
-    customfields.push({ name: "CFOutlookInternetMessageId", value: internetMessageId });
-  }
-  if (customfields.length === 0) return;
-  await updateTicket({ id: ticketId, customfields });
 }
 
 export { HaloApiError };

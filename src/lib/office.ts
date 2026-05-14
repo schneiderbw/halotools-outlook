@@ -7,7 +7,12 @@ export interface EmailContext {
   senderName: string;
   subject: string;
   conversationId: string;
+  /** RFC 5322 Message-ID of the current message, with angle brackets stripped. */
   internetMessageId: string;
+  /** Parent's Message-ID from the In-Reply-To header, angle brackets stripped. */
+  inReplyTo?: string;
+  /** Ancestor Message-IDs from the References header, angle brackets stripped. */
+  references: string[];
   itemId: string;
   receivedAt: Date;
 }
@@ -33,22 +38,103 @@ export function awaitOffice(): Promise<void> {
 }
 
 /** Pull metadata from the currently selected message in the read pane. */
-export function getCurrentEmailContext(): EmailContext | undefined {
+export async function getCurrentEmailContext(): Promise<EmailContext | undefined> {
   const item = Office.context.mailbox.item;
   if (!item || item.itemType !== Office.MailboxEnums.ItemType.Message) return undefined;
 
-  const from = (item as Office.MessageRead).from;
+  const msg = item as Office.MessageRead;
+  const from = msg.from;
   if (!from) return undefined;
+
+  const headers = await getInReplyToAndReferences(msg);
 
   return {
     senderEmail: from.emailAddress,
     senderName: from.displayName,
     subject: item.subject ?? "",
-    conversationId: (item as Office.MessageRead).conversationId,
-    internetMessageId: (item as Office.MessageRead).internetMessageId,
+    conversationId: msg.conversationId,
+    internetMessageId: stripAngleBrackets(msg.internetMessageId),
+    inReplyTo: headers.inReplyTo,
+    references: headers.references,
     itemId: item.itemId,
-    receivedAt: (item as Office.MessageRead).dateTimeCreated,
+    receivedAt: msg.dateTimeCreated,
   };
+}
+
+/**
+ * Read In-Reply-To and References headers from the current message.
+ * Requires Mailbox 1.8+ (getInternetHeadersAsync). On older versions or any
+ * failure we resolve to empty so callers can degrade gracefully.
+ */
+function getInReplyToAndReferences(
+  msg: Office.MessageRead,
+): Promise<{ inReplyTo?: string; references: string[] }> {
+  return new Promise((resolve) => {
+    const getter = (
+      msg as unknown as {
+        getAllInternetHeadersAsync?: (
+          cb: (r: Office.AsyncResult<string>) => void,
+        ) => void;
+      }
+    ).getAllInternetHeadersAsync;
+    if (typeof getter !== "function") {
+      resolve({ references: [] });
+      return;
+    }
+    try {
+      getter.call(msg, (result: Office.AsyncResult<string>) => {
+        if (result.status !== Office.AsyncResultStatus.Succeeded) {
+          resolve({ references: [] });
+          return;
+        }
+        resolve(parseThreadingHeaders(result.value));
+      });
+    } catch {
+      resolve({ references: [] });
+    }
+  });
+}
+
+function parseThreadingHeaders(raw: string): { inReplyTo?: string; references: string[] } {
+  // RFC 5322 headers come as a single CRLF-joined blob. Folded values (lines
+  // starting with whitespace) belong to the previous header — unfold first.
+  const unfolded = raw.replace(/\r\n[ \t]+/g, " ");
+  const lines = unfolded.split(/\r?\n/);
+  let inReplyToLine = "";
+  let referencesLine = "";
+  for (const line of lines) {
+    const colon = line.indexOf(":");
+    if (colon < 0) continue;
+    const name = line.slice(0, colon).trim().toLowerCase();
+    const value = line.slice(colon + 1).trim();
+    if (name === "in-reply-to" && !inReplyToLine) inReplyToLine = value;
+    else if (name === "references" && !referencesLine) referencesLine = value;
+  }
+  const inReplyToIds = extractMessageIds(inReplyToLine);
+  const referenceIds = extractMessageIds(referencesLine);
+  return {
+    inReplyTo: inReplyToIds[0],
+    references: referenceIds,
+  };
+}
+
+function extractMessageIds(value: string): string[] {
+  if (!value) return [];
+  // Pull out anything that looks like a Message-ID. Most clients format these
+  // as <local@domain>; some legacy senders omit the angle brackets.
+  const bracketed = value.match(/<[^<>\s]+>/g);
+  if (bracketed && bracketed.length) {
+    return bracketed.map(stripAngleBrackets).filter(Boolean);
+  }
+  return value
+    .split(/\s+/)
+    .map((t) => stripAngleBrackets(t))
+    .filter(Boolean);
+}
+
+function stripAngleBrackets(id: string | undefined): string {
+  if (!id) return "";
+  return id.trim().replace(/^<|>$/g, "");
 }
 
 /** Get the message body as plain text (default) or HTML. Async. */

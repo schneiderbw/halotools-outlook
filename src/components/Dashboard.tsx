@@ -23,7 +23,7 @@ import {
   findUserByEmail,
   findClientByDomain,
   listOpenTicketsForClient,
-  findTicketsByConversationId,
+  findTicketsForEmail,
 } from "../lib/halo-api";
 import { signOut } from "../lib/auth";
 import { clearConfig } from "../lib/config";
@@ -114,8 +114,13 @@ export function Dashboard({ email, onSignedOut }: Props) {
         setContact(matchedContact);
         setClient(matchedClient);
 
-        if (email.conversationId) {
-          findTicketsByConversationId(email.conversationId)
+        const threadIds = [
+          email.internetMessageId,
+          email.inReplyTo,
+          ...email.references,
+        ].filter((id): id is string => !!id);
+        if (threadIds.length > 0) {
+          findTicketsForEmail(threadIds)
             .then((t) => !cancelled && setThreadTickets(t))
             .catch(() => {
               /* swallow — non-fatal */
@@ -131,7 +136,7 @@ export function Dashboard({ email, onSignedOut }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [email.senderEmail, email.conversationId, refreshTick]);
+  }, [email.senderEmail, email.internetMessageId, refreshTick]);
 
   // Refetch open tickets whenever the active client changes (auto or override)
   useEffect(() => {

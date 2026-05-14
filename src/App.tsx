@@ -46,7 +46,9 @@ export function App() {
 
   // Re-read current email when Outlook selection changes
   const refreshEmail = useCallback(() => {
-    setEmail(getCurrentEmailContext());
+    getCurrentEmailContext()
+      .then((ctx) => setEmail(ctx))
+      .catch(() => setEmail(undefined));
   }, []);
 
   useEffect(() => {
