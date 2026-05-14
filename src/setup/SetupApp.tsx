@@ -227,14 +227,14 @@ export function SetupApp() {
 
         {step === "register-app" && (
           <>
-            <Subtitle2>Register a Halo Connect application</Subtitle2>
+            <Subtitle2>Register an API application in Halo</Subtitle2>
             <Body1>In your Halo instance, go to:</Body1>
-            <Body1Strong>Configuration → Integrations → Halo Connect → API</Body1Strong>
+            <Body1Strong>Configuration → Integrations → API</Body1Strong>
             <Body1>Click <em>New</em> and configure the application as follows:</Body1>
             <ol className={styles.ol}>
               <li><Body1>Application Name: <code>Outlook Add-in</code> (anything you like)</Body1></li>
               <li><Body1>Authentication Method: <code>Authorization Code (PKCE)</code></Body1></li>
-              <li><Body1>Login Type: <code>Agent</code></Body1></li>
+              <li><Body1>Allowed Logins: check <strong>Allow Agent Logins</strong>. Leave <em>Allow End-User Logins</em> and <em>Allow Anonymous Access</em> unchecked.</Body1></li>
               <li>
                 <Body1>Redirect URI — paste exactly:</Body1>
                 <CopyableValue value={REDIRECT_URI} />
@@ -260,7 +260,7 @@ export function SetupApp() {
             <Field
               label="Client ID"
               required
-              hint="From the Halo Connect application you just registered"
+              hint="From the API application you just registered in Halo"
             >
               <Input
                 value={clientId}
