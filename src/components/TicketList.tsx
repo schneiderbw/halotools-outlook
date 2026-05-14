@@ -390,7 +390,7 @@ function statusColor(s: HaloStatus | undefined):
   | "warning" {
   if (!s) return "subtle";
   if (s.isclosed) return "success";
-  const t = (s.type ?? "").toLowerCase();
+  const t = typeof s.type === "string" ? s.type.toLowerCase() : "";
   if (t.includes("hold") || t.includes("pending")) return "warning";
   if (t.includes("new")) return "informative";
   if (t.includes("open") || t.includes("progress")) return "brand";
