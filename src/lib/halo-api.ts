@@ -10,6 +10,7 @@ import type {
   HaloStatus,
   HaloAgent,
   HaloKbArticle,
+  HaloPriority,
   CreateTicketPayload,
   CreateActionPayload,
   CreateContactPayload,
@@ -196,6 +197,7 @@ export async function findTicketsForEmail(messageIds: string[]): Promise<HaloTic
 let _ticketTypesCache: HaloTicketType[] | undefined;
 let _agentsCache: HaloAgent[] | undefined;
 let _statusesCache: HaloStatus[] | undefined;
+let _prioritiesCache: HaloPriority[] | undefined;
 
 export async function listTicketTypes(force = false): Promise<HaloTicketType[]> {
   if (_ticketTypesCache && !force) return _ticketTypesCache;
@@ -224,10 +226,20 @@ export async function listStatuses(force = false): Promise<HaloStatus[]> {
   return _statusesCache;
 }
 
+export async function listPriorities(force = false): Promise<HaloPriority[]> {
+  if (_prioritiesCache && !force) return _prioritiesCache;
+  const res = await call<{ priorities: HaloPriority[] } | HaloPriority[]>(
+    "/Priority?includeinactive=false",
+  );
+  _prioritiesCache = (Array.isArray(res) ? res : res.priorities).filter((p) => !p.inactive);
+  return _prioritiesCache;
+}
+
 export function clearReferenceCache() {
   _ticketTypesCache = undefined;
   _agentsCache = undefined;
   _statusesCache = undefined;
+  _prioritiesCache = undefined;
 }
 
 // ---------- Current user → Halo agent ----------
