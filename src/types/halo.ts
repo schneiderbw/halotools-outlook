@@ -141,3 +141,16 @@ export interface UpdateTicketPayload {
   priority_id?: number;
   customfields?: Array<{ name: string; value: string | number | boolean }>;
 }
+
+/**
+ * Knowledge base article shape from /KBArticle.
+ * Body lives in `faq_answer` on most tenants; some older tenants surface it under `details`.
+ * Callers should try faq_answer first, then fall back to details.
+ */
+export interface HaloKbArticle {
+  id: number;
+  name: string;
+  faq_answer?: string;
+  details?: string;
+  tags?: Array<{ value: string }>;
+}
