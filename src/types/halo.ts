@@ -36,16 +36,26 @@ export interface CreateContactPayload {
 export interface HaloTicketType {
   id: number;
   name: string;
+  /** Surface where this type is usable: "tickets" / "opps" / "projects" (plural). */
   use: string;
   inactive?: boolean;
+  /** Whether agents are allowed to pick this type when creating. False = hidden from the agent picker. */
+  agentscanselect?: boolean;
+  enduserscanselect?: boolean;
+  anonymouscanselect?: boolean;
+  /** Visible at all in any picker. Some types are flagged invisible without being inactive. */
+  visible?: boolean;
 }
 
 export interface HaloStatus {
   id: number;
   name: string;
-  type?: string;
-  /** When true, this status counts as "ticket is closed" for Halo's reporting */
-  isclosed?: boolean;
+  /** Status category code (0 = regular, 1 = order, 2 = item, 3 = special). NOT a label string. */
+  type?: number;
+  /** Hex colour Halo assigns to the status — what we render on the pill. */
+  colour?: string;
+  /** SLA behaviour: "removehold" | "hold" | "none". Useful as a heuristic for closed-ness. */
+  slaaction?: string;
   inactive?: boolean;
 }
 
@@ -57,11 +67,18 @@ export interface HaloAgent {
 }
 
 export interface HaloPriority {
-  id: number;
+  /** Halo's GUID identifier. NOT the value you compare to ticket.priority_id. */
+  id: string;
   name: string;
-  priorityid?: number;
+  /** Numeric priority ID — THIS is what ticket.priority_id references. */
+  priorityid: number;
   colour?: string;
   inactive?: boolean;
+  /**
+   * SLA scoping (Halo's response uses `slaid`, no underscore). A priority
+   * without slaid is global; otherwise it only applies to tickets on that SLA.
+   */
+  slaid?: number;
 }
 
 export interface HaloTicket {
@@ -74,16 +91,26 @@ export interface HaloTicket {
   client_name?: string;
   user_id?: number;
   user_name?: string;
+  // Halo's REST shape for the assigned agent is inconsistent across versions:
+  // some tenants return agent_id/agent_name, others agentname or assignedagent_*,
+  // and the nested includedetails response uses `agent: { id, name }`.
   agent_id?: number;
   agent_name?: string;
+  agentname?: string;
+  assignedagent_id?: number;
+  assignedagent_name?: string;
+  agent?: { id?: number; name?: string };
   priority_id?: number;
   priorityname?: string;
+  sla_id?: number;
   tickettype_id?: number;
   category_1?: string;
   dateoccurred?: string;
   dateopened?: string;
-  /** ISO date (YYYY-MM-DD or full ISO). Halo's canonical name is "target_date"; some tenants expose "deadlinedate" or "duedate" on read. */
-  target_date?: string;
+  /** ISO datetime. Halo's actual field name is `targetdate` (no underscore). */
+  targetdate?: string;
+  /** Some Halo versions expose a hard deadline separately. Empty/zero-date when unset. */
+  deadlinedate?: string;
   customfields?: Array<{ name: string; value: unknown }>;
 }
 
@@ -156,8 +183,8 @@ export interface UpdateTicketPayload {
   agent_id?: number;
   priority_id?: number;
   customfields?: Array<{ name: string; value: string | number | boolean }>;
-  /** ISO date string for the ticket due / target date. */
-  target_date?: string;
+  /** ISO datetime for the ticket target / due date. Halo expects this exact field name on writes. */
+  targetdate?: string;
 }
 
 /**

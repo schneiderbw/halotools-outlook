@@ -73,9 +73,20 @@ export async function applyUrlParamConfig(): Promise<boolean> {
   } catch {
     return false;
   }
-  const url = new URL(window.location.href);
-  url.searchParams.delete("halo");
-  url.searchParams.delete("clientId");
-  history.replaceState(null, "", url.pathname + (url.search ? url.search : "") + url.hash);
+  // Decorative URL cleanup so the params don't linger in the address bar.
+  // Outlook's first-open (pre-pin) task pane runtime sometimes exposes a
+  // `history` object that doesn't carry a real `replaceState` — guard so a
+  // missing API doesn't crash the whole add-in. Config is already persisted
+  // either way; subsequent loads short-circuit at `getConfig()` above.
+  try {
+    if (typeof window.history?.replaceState === "function") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("halo");
+      url.searchParams.delete("clientId");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  } catch {
+    /* leave URL params in place — they're harmless once setConfig succeeded */
+  }
   return true;
 }

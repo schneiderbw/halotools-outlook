@@ -14,7 +14,11 @@ import {
 import { ArrowLeft24Regular } from "@fluentui/react-icons";
 import { getConfig } from "../lib/config";
 import { getDefaults, setDefaults } from "../lib/defaults";
-import { listTicketTypes, clearReferenceCache } from "../lib/halo-api";
+import {
+  listTicketTypes,
+  ticketTypesForAgentCreate,
+  clearReferenceCache,
+} from "../lib/halo-api";
 import type { HaloTicketType } from "../types/halo";
 
 const useStyles = makeStyles({
@@ -85,7 +89,7 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
 
   useEffect(() => {
     listTicketTypes()
-      .then(setTicketTypes)
+      .then((all) => setTicketTypes(ticketTypesForAgentCreate(all)))
       .catch(() => {
         /* non-fatal — picker just stays empty */
       })
@@ -194,7 +198,9 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
           appearance="subtle"
           onClick={() => {
             clearReferenceCache();
-            listTicketTypes(true).then(setTicketTypes).catch(() => {});
+            listTicketTypes(true)
+              .then((all) => setTicketTypes(ticketTypesForAgentCreate(all)))
+              .catch(() => {});
           }}
         >
           Refresh reference data

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   Text,
   makeStyles,
@@ -195,18 +195,14 @@ export function TicketList({ label, tickets, onTicketUpdated }: Props) {
 
   const openInHalo = (ticketId: number) => {
     if (!haloUrl) return;
-    // Halo's deep-link path for a single ticket in the agent UI. The trailing slash
-    // before the query matters on some Halo builds.
-    const url = `${haloUrl}/agent/?ticketid=${ticketId}`;
-    // window.open is more reliable than Office.context.ui.openBrowserWindow, which
-    // is silently a no-op on several Outlook hosts (new Outlook desktop especially).
+    // Halo's deep-link path for a single ticket. Add &action_id=N to jump to a
+    // specific action within the ticket.
+    const url = `${haloUrl}/ticket?id=${ticketId}`;
     const w = window.open(url, "_blank", "noopener,noreferrer");
     if (!w) {
-      // Popup blocked — fall back to the Office API which is allowed inside the host.
       try {
         Office.context.ui.openBrowserWindow(url);
       } catch {
-        /* last resort: just navigate within the task pane */
         window.location.href = url;
       }
     }
@@ -226,7 +222,7 @@ export function TicketList({ label, tickets, onTicketUpdated }: Props) {
         status_id: partial.status_id,
         agent_id: partial.agent_id,
         priority_id: partial.priority_id,
-        target_date: partial.target_date,
+        targetdate: partial.targetdate,
       });
       // Merge server response with any optimistic name fields we set locally.
       onTicketUpdated?.({ ...updated, ...partial, id: ticket.id });
@@ -362,7 +358,7 @@ function TicketRow({
           priorities={priorities}
           busy={busy === "priority"}
           onPick={(p) =>
-            onApply("priority", { priority_id: p.id, priorityname: p.name })
+            onApply("priority", { priority_id: p.priorityid, priorityname: p.name })
           }
           onClear={() => onApply("priority", { priority_id: 0, priorityname: undefined })}
         />
@@ -378,8 +374,8 @@ function TicketRow({
         <DuePill
           ticket={ticket}
           busy={busy === "due"}
-          onChange={(iso) => onApply("due", { target_date: iso })}
-          onClear={() => onApply("due", { target_date: "" })}
+          onChange={(iso) => onApply("due", { targetdate: iso })}
+          onClear={() => onApply("due", { targetdate: "" })}
         />
         <LogTimePill ticket={ticket} busy={busy === "log"} onSubmit={onLogTime} />
       </div>
@@ -391,24 +387,10 @@ function TicketRow({
 
 // ---------- Status pill ----------
 
-/** Map a Halo status to a Fluent Badge color. Halo's `type` strings vary per tenant
- * but well-known buckets are "new", "open", "onhold/pending", "closed". */
-function statusColor(s: HaloStatus | undefined):
-  | "brand"
-  | "danger"
-  | "important"
-  | "informative"
-  | "severe"
-  | "subtle"
-  | "success"
-  | "warning" {
-  if (!s) return "subtle";
-  if (s.isclosed) return "success";
-  const t = typeof s.type === "string" ? s.type.toLowerCase() : "";
-  if (t.includes("hold") || t.includes("pending")) return "warning";
-  if (t.includes("new")) return "informative";
-  if (t.includes("open") || t.includes("progress")) return "brand";
-  return "subtle";
+/** Inline style for the status badge using Halo's own configured hex colour. */
+function statusBadgeStyle(s: HaloStatus | undefined): CSSProperties | undefined {
+  if (!s?.colour) return undefined;
+  return { borderColor: s.colour, color: s.colour };
 }
 
 function StatusPill({
@@ -439,11 +421,11 @@ function StatusPill({
     <Popover open={open} onOpenChange={(_, d) => setOpen(d.open)} trapFocus>
       <PopoverTrigger disableButtonEnhancement>
         <Badge
-          appearance="tint"
-          color={statusColor(current)}
+          appearance="outline"
           icon={<Status16Regular />}
           size="medium"
           className={styles.pill}
+          style={statusBadgeStyle(current)}
         >
           {label}
         </Badge>
@@ -463,10 +445,15 @@ function StatusPill({
                 setOpen(false);
               }}
             >
-              <Badge
-                appearance="filled"
-                color={statusColor(s)}
-                size="extra-small"
+              <span
+                aria-hidden
+                style={{
+                  display: "inline-block",
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  backgroundColor: s.colour ?? tokens.colorNeutralStroke1,
+                }}
               />
               <span>{s.name}</span>
             </button>
@@ -499,8 +486,16 @@ function PriorityPill({
 }) {
   const styles = useStyles();
   const [open, setOpen] = useState(false);
-  const current = priorities.find((p) => p.id === ticket.priority_id);
+  // ticket.priority_id is the numeric ID; HaloPriority.priorityid is the
+  // matching numeric (HaloPriority.id is a GUID string, not comparable).
+  const current = priorities.find((p) => p.priorityid === ticket.priority_id);
   const label = ticket.priorityname ?? current?.name ?? "Priority";
+
+  // Halo priorities are defined per-SLA. The SLA scoping field is `slaid`
+  // (no underscore). A priority without slaid is global and always applies.
+  const applicable = priorities.filter(
+    (p) => !p.slaid || !ticket.sla_id || p.slaid === ticket.sla_id,
+  );
 
   if (busy) {
     return (
@@ -529,11 +524,11 @@ function PriorityPill({
       </PopoverTrigger>
       <PopoverSurface className={styles.popoverSurface}>
         <div className={styles.popoverList}>
-          {priorities.map((p) => (
+          {applicable.map((p) => (
             <button
               key={p.id}
               className={
-                p.id === ticket.priority_id
+                p.priorityid === ticket.priority_id
                   ? `${styles.popoverItem} ${styles.popoverItemActive}`
                   : styles.popoverItem
               }
@@ -555,9 +550,9 @@ function PriorityPill({
               <span>{p.name}</span>
             </button>
           ))}
-          {priorities.length === 0 && (
+          {applicable.length === 0 && (
             <Text size={200} italic>
-              No priorities loaded.
+              No priorities available for this ticket's SLA.
             </Text>
           )}
           {ticket.priority_id != null && ticket.priority_id !== 0 && (
@@ -602,7 +597,21 @@ function AgentPill({
     return agents.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 50);
   }, [agents, query]);
 
-  const label = ticket.agent_name ?? "Unassigned";
+  // Halo returns the assigned agent under several different field names depending on
+  // tenant version. Resolve to whichever one is populated so an assigned ticket never
+  // mis-renders as "Unassigned".
+  const agentName =
+    ticket.agent_name ||
+    ticket.agentname ||
+    ticket.assignedagent_name ||
+    ticket.agent?.name ||
+    (() => {
+      const id =
+        ticket.agent_id ?? ticket.assignedagent_id ?? ticket.agent?.id;
+      if (!id) return undefined;
+      return agents.find((a) => a.id === id)?.name;
+    })();
+  const label = agentName ?? "Unassigned";
 
   if (busy) {
     return (
@@ -720,8 +729,8 @@ function DuePill({
 }) {
   const styles = useStyles();
   const [open, setOpen] = useState(false);
-  const formatted = formatDue(ticket.target_date);
-  const initial = ticket.target_date ? ticket.target_date.slice(0, 10) : "";
+  const formatted = formatDue(ticket.targetdate);
+  const initial = ticket.targetdate ? ticket.targetdate.slice(0, 10) : "";
   const [value, setValue] = useState(initial);
 
   useEffect(() => {
@@ -765,7 +774,7 @@ function DuePill({
           />
         </Field>
         <div className={styles.popoverActions}>
-          {ticket.target_date && (
+          {ticket.targetdate && (
             <Button
               appearance="subtle"
               size="small"

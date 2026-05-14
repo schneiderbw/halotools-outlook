@@ -137,6 +137,11 @@ export async function listOpenTicketsForClient(clientId: number): Promise<HaloTi
     client_id: String(clientId),
     open_only: "true",
     pageinate: "false",
+    // Without these, Halo's list response omits agent name, priority, SLA and
+    // custom fields — the row pills then read "Unassigned" / "—" for tickets
+    // that are actually assigned.
+    includedetails: "true",
+    includeagentdetails: "true",
   });
   const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
   return Array.isArray(res) ? res : res.tickets;
@@ -206,6 +211,24 @@ export async function listTicketTypes(force = false): Promise<HaloTicketType[]> 
   );
   _ticketTypesCache = (Array.isArray(res) ? res : res.tickettypes).filter((t) => !t.inactive);
   return _ticketTypesCache;
+}
+
+/**
+ * Subset of ticket types an agent can actually pick when creating a normal ticket.
+ * - use === "tickets" drops opportunities ("opps") and project types ("projects").
+ * - agentscanselect === false drops types that exist only for auto-creation
+ *   (e.g. "AI Parse Halo Email", "Triage") or end-user surfaces.
+ * - visible === false drops types Halo has hidden everywhere.
+ * Halo's /TicketType endpoint returns everything indiscriminately, so we filter here.
+ */
+export function ticketTypesForAgentCreate(all: HaloTicketType[]): HaloTicketType[] {
+  return all.filter((t) => {
+    if (t.inactive) return false;
+    if (t.visible === false) return false;
+    if (t.agentscanselect === false) return false;
+    if (t.use && t.use !== "tickets") return false;
+    return true;
+  });
 }
 
 export async function listAgents(force = false): Promise<HaloAgent[]> {
@@ -355,6 +378,18 @@ export async function createContact(payload: CreateContactPayload): Promise<Halo
     body: JSON.stringify([payload]),
   });
   return res[0];
+}
+
+/**
+ * Build a deep-link URL to a ticket in Halo's agent UI. Optionally jumps
+ * directly to a specific action within the ticket via &action_id=N.
+ * Returns undefined if the tenant config isn't loaded yet.
+ */
+export function ticketDeepLink(ticketId: number, actionId?: number): string | undefined {
+  const halo = getConfig()?.haloBaseUrl;
+  if (!halo) return undefined;
+  const base = `${halo}/ticket?id=${ticketId}`;
+  return actionId ? `${base}&action_id=${actionId}` : base;
 }
 
 export { HaloApiError };
