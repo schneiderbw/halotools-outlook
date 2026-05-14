@@ -43,7 +43,7 @@
       "requirements": {
         "scopes": ["mail"],
         "capabilities": [
-          { "name": "Mailbox", "minVersion": "1.12" }
+          { "name": "Mailbox", "minVersion": "1.10" }
         ]
       },
       "runtimes": [
@@ -83,17 +83,9 @@
           "id": "OnMessageSendRuntime",
           "type": "general",
           "code": {
-            "page": "https://tools.iusehalo.com/outlook/launchevent.html",
-            "script": "https://tools.iusehalo.com/outlook/launchevent.js"
+            "page": "https://tools.iusehalo.com/outlook/launchevent.html"
           },
-          "lifetime": "short",
-          "actions": [
-            {
-              "id": "onMessageSendHandler",
-              "type": "executeFunction",
-              "displayName": "onMessageSendHandler"
-            }
-          ]
+          "lifetime": "short"
         }
       ],
       "autoRunEvents": [
