@@ -252,7 +252,15 @@ export function SetupApp() {
               </Button>
             </div>
 
-            <ExistingPackageUpload onPick={handleExistingPackage} />
+            <ExistingPackageUpload
+              onPick={handleExistingPackage}
+              onPasteId={(id) => {
+                setExistingAppId(id);
+                setError(undefined);
+                // Halo URL + Client ID still need answers in this branch, so
+                // keep the user on the regular wizard flow.
+              }}
+            />
           </>
         )}
 
@@ -417,8 +425,28 @@ export function SetupApp() {
   );
 }
 
-function ExistingPackageUpload({ onPick }: { onPick: (file: File) => void }) {
+function ExistingPackageUpload({
+  onPick,
+  onPasteId,
+}: {
+  onPick: (file: File) => void;
+  onPasteId: (id: string) => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [pastedId, setPastedId] = useState("");
+  const [pasteError, setPasteError] = useState<string | undefined>();
+  const guidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  const submitId = () => {
+    const trimmed = pastedId.trim();
+    if (!guidRe.test(trimmed)) {
+      setPasteError("Enter a GUID like 10344d7a-f46f-463c-a0fb-5fbf43b3d074");
+      return;
+    }
+    setPasteError(undefined);
+    onPasteId(trimmed);
+  };
+
   return (
     <div
       style={{
@@ -427,12 +455,13 @@ function ExistingPackageUpload({ onPick }: { onPick: (file: File) => void }) {
         borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
         display: "flex",
         flexDirection: "column",
-        gap: 4,
+        gap: 8,
       }}
     >
       <Body1 style={{ color: tokens.colorNeutralForeground3 }}>
-        Updating an existing deployment? Upload your current package to keep the
-        same app ID — M365 will treat the result as an update instead of a new install.
+        Updating an existing deployment? Either upload your current package or
+        paste the app ID — M365 will treat the result as an update instead of a
+        new install.
       </Body1>
       <div>
         <Button
@@ -455,6 +484,32 @@ function ExistingPackageUpload({ onPick }: { onPick: (file: File) => void }) {
           }}
         />
       </div>
+      <Field
+        label="Or paste the app ID from M365 admin"
+        hint="Microsoft 365 admin → Integrated apps → Halo → app details. It's a GUID."
+        validationState={pasteError ? "error" : undefined}
+        validationMessage={pasteError}
+      >
+        <div style={{ display: "flex", gap: 6 }}>
+          <Input
+            value={pastedId}
+            onChange={(_, d) => {
+              setPastedId(d.value);
+              if (pasteError) setPasteError(undefined);
+            }}
+            placeholder="10344d7a-f46f-463c-a0fb-5fbf43b3d074"
+            style={{ flex: 1 }}
+          />
+          <Button
+            appearance="secondary"
+            size="small"
+            disabled={!pastedId.trim()}
+            onClick={submitId}
+          >
+            Use ID
+          </Button>
+        </div>
+      </Field>
     </div>
   );
 }
