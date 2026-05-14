@@ -35,7 +35,6 @@ import {
   searchTickets,
   searchKbArticles,
   appendAction,
-  stampOutlookThreadFields,
 } from "../lib/halo-api";
 import {
   getRecipients,
@@ -670,17 +669,9 @@ function LogOnSendSection() {
         // without needing a dedicated field. (Halo's CreateActionPayload has no To field.)
         ...(toList ? { emailsubject: `${subject} — to: ${toList}` } : {}),
       });
-      // Best-effort stamp so future replies can thread to the same ticket.
-      stampOutlookThreadFields(
-        selectedTicketId,
-        // Compose items don't expose a conversationId until they're sent; use the draft itemId
-        // as a stable thread key for now. Replies generated in Outlook share conversationId
-        // with their parent, so the read surface's append path will still pick this up.
-        undefined,
-        undefined,
-      ).catch(() => {
-        /* non-fatal */
-      });
+      // Threading now happens via RFC Message-ID stamped on the action when read-surface
+      // appends — compose items don't expose internetMessageId until they're sent, so we
+      // rely on the user (or recipient) replying later for the thread to attach.
       setToast(`Appended to #${action.ticket_id} (manual fallback — see hint)`);
       setTimeout(() => setToast(undefined), 5000);
     } catch (e) {
