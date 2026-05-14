@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <!-- HaloPSA mark: red speech-bubble disc -->
+  <!-- HaloPSA mark: red disc with white speech-bubble cutout -->
   <circle cx="64" cy="64" r="62" fill="#EF3340"/>
-  <!-- Inner white circle (speech bubble body), slightly offset upward -->
-  <circle cx="64" cy="60" r="32" fill="#FFFFFF"/>
-  <!-- Tail pointing down-left, joined to the inner circle -->
-  <path d="M 50 84 L 36 102 L 60 86 Z" fill="#FFFFFF"/>
+  <!-- Inner white bubble: larger circle to give a thinner red ring -->
+  <circle cx="64" cy="62" r="42" fill="#FFFFFF"/>
+  <!-- Tail: triangle extending down-left, overlapping the inner circle so it reads as one shape -->
+  <path d="M 44 92 L 30 112 L 58 94 Z" fill="#FFFFFF"/>
 </svg>
