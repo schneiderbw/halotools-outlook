@@ -9,6 +9,7 @@ import type {
   HaloTicketType,
   HaloStatus,
   HaloAgent,
+  HaloKbArticle,
   CreateTicketPayload,
   CreateActionPayload,
   UpdateTicketPayload,
@@ -100,6 +101,33 @@ export async function searchClients(query: string, limit = 25): Promise<HaloClie
   });
   const res = await call<{ clients: HaloClient[] } | HaloClient[]>(`/Client?${q}`);
   return Array.isArray(res) ? res : res.clients;
+}
+
+/** Free-text ticket search — used by the compose surface to insert ticket links. */
+export async function searchTickets(query: string, limit = 25): Promise<HaloTicket[]> {
+  const q = new URLSearchParams({
+    search: query,
+    pageinate: "false",
+    count: String(limit),
+  });
+  const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
+  return Array.isArray(res) ? res : res.tickets;
+}
+
+/** Free-text KB article search — used by the compose surface to insert article snippets. */
+export async function searchKbArticles(query: string, limit = 25): Promise<HaloKbArticle[]> {
+  const q = new URLSearchParams({
+    search: query,
+    pageinate: "false",
+    count: String(limit),
+  });
+  // Halo's KB collection wrapper is inconsistent across versions — some tenants return a bare array,
+  // others return { articles: [...] } or { kbarticles: [...] }. Normalize to an array.
+  const res = await call<
+    { articles?: HaloKbArticle[]; kbarticles?: HaloKbArticle[] } | HaloKbArticle[]
+  >(`/KBArticle?${q}`);
+  if (Array.isArray(res)) return res;
+  return res.articles ?? res.kbarticles ?? [];
 }
 
 export async function listOpenTicketsForClient(clientId: number): Promise<HaloTicket[]> {

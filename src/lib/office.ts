@@ -145,3 +145,111 @@ function sanitizeFilename(name: string): string {
     .trim()
     .slice(0, 200);
 }
+
+// ---------- Compose-surface helpers ----------
+//
+// These only work when the task pane is mounted under a mailCompose runtime.
+// Each is guarded so a misuse from the read surface fails fast with a clear error
+// rather than triggering an opaque Office.js exception.
+
+/** True when the current item exposes the compose-mode recipient fields. */
+function isComposeItem(): boolean {
+  const item = Office.context?.mailbox?.item as Office.MessageCompose | undefined;
+  return !!item && typeof (item as Office.MessageCompose).to?.getAsync === "function";
+}
+
+function getAsyncRecipients(
+  field: Office.Recipients,
+): Promise<Office.EmailAddressDetails[]> {
+  return new Promise((resolve, reject) => {
+    field.getAsync((result) => {
+      if (result.status === Office.AsyncResultStatus.Succeeded) resolve(result.value);
+      else reject(new Error(result.error?.message ?? "Failed to read recipients"));
+    });
+  });
+}
+
+/**
+ * Read To / Cc / Bcc on the current compose item.
+ * Returns lowercased email addresses (display names stripped) for stable downstream lookup.
+ */
+export async function getRecipients(): Promise<{
+  to: string[];
+  cc: string[];
+  bcc: string[];
+}> {
+  if (!isComposeItem()) {
+    throw new Error("getRecipients is only available in the compose surface");
+  }
+  const item = Office.context.mailbox.item as Office.MessageCompose;
+  const [to, cc, bcc] = await Promise.all([
+    getAsyncRecipients(item.to),
+    getAsyncRecipients(item.cc),
+    getAsyncRecipients(item.bcc),
+  ]);
+  const flat = (arr: Office.EmailAddressDetails[]) =>
+    arr.map((r) => r.emailAddress).filter(Boolean);
+  return { to: flat(to), cc: flat(cc), bcc: flat(bcc) };
+}
+
+/** Insert an HTML fragment at the cursor in the compose body. */
+export function insertIntoBody(html: string): Promise<void> {
+  if (!isComposeItem()) {
+    return Promise.reject(
+      new Error("insertIntoBody is only available in the compose surface"),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    Office.context.mailbox.item?.body.setSelectedDataAsync(
+      html,
+      { coercionType: Office.CoercionType.Html },
+      (result) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) resolve();
+        else reject(new Error(result.error?.message ?? "Failed to insert content"));
+      },
+    );
+  });
+}
+
+/** Save the in-progress compose draft and return its server-side itemId. */
+export function saveDraft(): Promise<string> {
+  if (!isComposeItem()) {
+    return Promise.reject(new Error("saveDraft is only available in the compose surface"));
+  }
+  return new Promise((resolve, reject) => {
+    (Office.context.mailbox.item as Office.MessageCompose).saveAsync((result) => {
+      if (result.status === Office.AsyncResultStatus.Succeeded) resolve(result.value);
+      else reject(new Error(result.error?.message ?? "Failed to save draft"));
+    });
+  });
+}
+
+/** Read the current compose body. */
+export function getComposeBody(format: "text" | "html" = "html"): Promise<string> {
+  if (!isComposeItem()) {
+    return Promise.reject(
+      new Error("getComposeBody is only available in the compose surface"),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    Office.context.mailbox.item?.body.getAsync(
+      format === "html" ? Office.CoercionType.Html : Office.CoercionType.Text,
+      (result) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) resolve(result.value);
+        else reject(new Error(result.error?.message ?? "Failed to read body"));
+      },
+    );
+  });
+}
+
+/** Read the compose subject (best-effort; returns empty string if unavailable). */
+export function getComposeSubject(): Promise<string> {
+  if (!isComposeItem()) return Promise.resolve("");
+  return new Promise((resolve) => {
+    const item = Office.context.mailbox.item as Office.MessageCompose;
+    item.subject.getAsync((result) => {
+      if (result.status === Office.AsyncResultStatus.Succeeded) resolve(result.value ?? "");
+      else resolve("");
+    });
+  });
+}
