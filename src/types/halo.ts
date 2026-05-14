@@ -121,6 +121,10 @@ export interface CreateActionPayload {
   inreplyto?: string;
   /** Space-separated ancestor Message-IDs from the References header. */
   references?: string;
+  /** Halo customer ("user") this action is on — sets the action to be from-customer. */
+  user_id?: number;
+  /** Some Halo versions require this explicit field instead of (or alongside) user_id. */
+  actionby_user_id?: number;
 }
 
 export interface CreateTicketPayload {

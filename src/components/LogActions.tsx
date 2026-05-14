@@ -107,6 +107,7 @@ export function LogActions({
       <div className={styles.buttons}>
         <AppendDialog
           email={email}
+          contact={contact}
           tickets={candidateTickets}
           onResult={announce}
           triggerClass={styles.buttonFull}
@@ -142,26 +143,45 @@ export function LogActions({
 
 function AppendDialog({
   email,
+  contact,
   tickets,
   onResult,
   triggerClass,
   appearance = "secondary",
 }: {
   email: EmailContext;
+  contact?: HaloUser;
   tickets: HaloTicket[];
   onResult: (kind: "success" | "error" | "warning", msg: string) => void;
   triggerClass: string;
   appearance?: "primary" | "secondary";
 }) {
   const [selectedId, setSelectedId] = useState<number | undefined>();
+  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [done, setDone] = useState<string | undefined>();
   const [internalNote, setInternalNote] = useState(false);
   const [includeAttachments, setIncludeAttachments] = useState(
     getDefaults().includeAttachmentsByDefault ?? true,
   );
-  const [timeMinutes, setTimeMinutes] = useState<string>("");
   const attachmentCount = listAttachments().filter((a) => !a.isInline).length;
+
+  const filteredTickets = (() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return tickets;
+    return tickets.filter((t) => {
+      const hay = `#${t.id} ${t.summary ?? ""} ${t.statusname ?? ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  })();
+
+  const reset = () => {
+    setSelectedId(undefined);
+    setQuery("");
+    setDone(undefined);
+    setInternalNote(false);
+  };
 
   const submit = async () => {
     if (!selectedId) return;
@@ -178,12 +198,11 @@ function AppendDialog({
         }
       }
 
-      // Convert minutes input to decimal hours for Halo's time_taken field
-      const time = parseFloat(timeMinutes);
-      const timeHours = Number.isFinite(time) && time > 0 ? time / 60 : undefined;
-
       const action = await appendAction({
         ticket_id: selectedId,
+        // "Email Received" is Halo's canonical inbound-from-customer outcome — drives
+        // the action to be recorded as from the user and (via Halo's outcome rules)
+        // typically flips status to a "needs response" state.
         outcome: getDefaults().defaultAppendOutcome ?? "Email Received",
         note: html,
         hiddenfromuser: internalNote,
@@ -191,7 +210,10 @@ function AppendDialog({
         emailfromname: email.senderName,
         emailsubject: email.subject,
         attachments: attachments.length ? attachments : undefined,
-        time_taken: timeHours,
+        // Explicit linkage so Halo attributes the action to the customer, not the
+        // agent who clicked Append. Without user_id Halo defaults to the API caller.
+        user_id: contact?.id,
+        actionby_user_id: contact?.id,
         internetmessageid: email.internetMessageId,
         inreplyto: email.inReplyTo,
         references: email.references.length ? email.references.join(" ") : undefined,
@@ -199,10 +221,16 @@ function AppendDialog({
 
       if (attachWarning) {
         onResult("warning", `Appended to #${action.ticket_id}, but: ${attachWarning}`);
+        setOpen(false);
       } else {
+        // In-dialog success so the user sees confirmation without scrolling. Auto-close after a beat.
+        setDone(`Appended to #${action.ticket_id}`);
         onResult("success", `Appended to #${action.ticket_id}`);
+        setTimeout(() => {
+          setOpen(false);
+          reset();
+        }, 1200);
       }
-      setOpen(false);
     } catch (e) {
       onResult("error", (e as Error).message);
     } finally {
@@ -211,7 +239,13 @@ function AppendDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
+    <Dialog
+      open={open}
+      onOpenChange={(_, d) => {
+        setOpen(d.open);
+        if (!d.open) reset();
+      }}
+    >
       <DialogTrigger disableButtonEnhancement>
         <Button
           appearance={appearance}
@@ -226,19 +260,34 @@ function AppendDialog({
         <DialogBody>
           <DialogTitle>Append email to ticket</DialogTitle>
           <DialogContent>
-            <Field label="Ticket" required>
+            <Field label="Ticket" required hint="Type to filter by # or summary">
               <Combobox
-                placeholder="Select a ticket"
-                onOptionSelect={(_, d) =>
-                  setSelectedId(d.optionValue ? Number(d.optionValue) : undefined)
-                }
+                freeform
+                placeholder="Search tickets…"
+                value={query}
+                selectedOptions={selectedId ? [String(selectedId)] : []}
+                onInput={(e) => {
+                  setQuery((e.target as HTMLInputElement).value);
+                  setSelectedId(undefined);
+                }}
+                onOptionSelect={(_, d) => {
+                  const id = d.optionValue ? Number(d.optionValue) : undefined;
+                  setSelectedId(id);
+                  const t = tickets.find((x) => x.id === id);
+                  setQuery(t ? `#${t.id} · ${t.summary}` : "");
+                }}
               >
-                {tickets.map((t) => (
-                  <Option key={t.id} value={String(t.id)} text={`#${t.id} ${t.summary}`}>
+                {filteredTickets.map((t) => (
+                  <Option key={t.id} value={String(t.id)} text={`#${t.id} · ${t.summary}`}>
                     #{t.id} · {t.summary}
                     {t.statusname ? ` · ${t.statusname}` : ""}
                   </Option>
                 ))}
+                {filteredTickets.length === 0 && (
+                  <Option value="__none__" disabled>
+                    No tickets match
+                  </Option>
+                )}
               </Combobox>
             </Field>
 
@@ -258,15 +307,13 @@ function AppendDialog({
                     : `Include ${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`
                 }
               />
-              <Field label="Time spent (minutes)" hint="Optional — recorded on the action">
-                <Input
-                  type="number"
-                  value={timeMinutes}
-                  onChange={(_, d) => setTimeMinutes(d.value)}
-                  placeholder="e.g. 15"
-                />
-              </Field>
             </div>
+
+            {done && (
+              <MessageBar intent="success" style={{ marginTop: 12 }}>
+                <MessageBarBody>{done}</MessageBarBody>
+              </MessageBar>
+            )}
           </DialogContent>
           <DialogActions>
             <Button appearance="secondary" onClick={() => setOpen(false)} disabled={busy}>
@@ -275,10 +322,10 @@ function AppendDialog({
             <Button
               appearance="primary"
               onClick={submit}
-              disabled={!selectedId || busy}
+              disabled={!selectedId || busy || !!done}
               icon={busy ? <Spinner size="tiny" /> : undefined}
             >
-              {busy ? "Appending…" : "Append"}
+              {busy ? "Appending…" : done ? "Done" : "Append"}
             </Button>
           </DialogActions>
         </DialogBody>

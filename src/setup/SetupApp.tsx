@@ -227,14 +227,14 @@ export function SetupApp() {
 
         {step === "register-app" && (
           <>
-            <Subtitle2>Register a Halo Connect application</Subtitle2>
+            <Subtitle2>Register an API application in Halo</Subtitle2>
             <Body1>In your Halo instance, go to:</Body1>
-            <Body1Strong>Configuration → Integrations → Halo Connect → API</Body1Strong>
+            <Body1Strong>Configuration → Integrations → API</Body1Strong>
             <Body1>Click <em>New</em> and configure the application as follows:</Body1>
             <ol className={styles.ol}>
               <li><Body1>Application Name: <code>Outlook Add-in</code> (anything you like)</Body1></li>
               <li><Body1>Authentication Method: <code>Authorization Code (PKCE)</code></Body1></li>
-              <li><Body1>Login Type: <code>Agent</code></Body1></li>
+              <li><Body1>Allowed Logins: check <strong>Allow Agent Logins</strong>. Leave <em>Allow End-User Logins</em> and <em>Allow Anonymous Access</em> unchecked.</Body1></li>
               <li>
                 <Body1>Redirect URI — paste exactly:</Body1>
                 <CopyableValue value={REDIRECT_URI} />
@@ -260,7 +260,7 @@ export function SetupApp() {
             <Field
               label="Client ID"
               required
-              hint="From the Halo Connect application you just registered"
+              hint="From the API application you just registered in Halo"
             >
               <Input
                 value={clientId}
@@ -299,11 +299,54 @@ export function SetupApp() {
             <div className={styles.successBody}>
               <Subtitle2>Next: deploy to your tenant</Subtitle2>
               <ol className={styles.ol}>
-                <li><Body1>Sign in at <strong>admin.microsoft.com</strong> as a global or apps admin.</Body1></li>
-                <li><Body1>Go to <strong>Settings → Integrated apps</strong>.</Body1></li>
-                <li><Body1>Click <strong>Upload custom apps</strong>.</Body1></li>
-                <li><Body1>Choose <strong>App type: Office Add-in</strong> and <strong>Upload manifest file (.zip)</strong>, then pick the file you just downloaded.</Body1></li>
-                <li><Body1>Assign to your team and finish the deployment.</Body1></li>
+                <li>
+                  <Body1>
+                    Sign in to{" "}
+                    <a
+                      href="https://admin.microsoft.com/Adminportal/Home#/Settings/IntegratedApps"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      admin.microsoft.com → Integrated apps
+                    </a>{" "}
+                    as a global or apps admin.
+                  </Body1>
+                </li>
+                <li>
+                  <Body1>
+                    Click <strong>Upload custom apps</strong>.
+                  </Body1>
+                </li>
+                <li>
+                  <Body1>
+                    <strong>App type: Microsoft Teams app</strong>{" "}
+                    <em>(yes, Teams — this is the path that accepts the unified manifest zip and</em>{" "}
+                    <em>also deploys to Outlook. The "Office Add-in" option only takes the legacy</em>{" "}
+                    <em>XML format and won't work here).</em>
+                  </Body1>
+                </li>
+                <li>
+                  <Body1>
+                    <strong>Upload an app package (.zip)</strong> → pick the file you just
+                    downloaded.
+                  </Body1>
+                </li>
+                <li>
+                  <Body1>Assign to your team and finish the deployment.</Body1>
+                </li>
+                <li>
+                  <Body1>
+                    Also surface it in{" "}
+                    <a
+                      href="https://admin.teams.microsoft.com/policies/app-setup"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Teams admin → App setup policies
+                    </a>{" "}
+                    if you want it pre-pinned for users.
+                  </Body1>
+                </li>
               </ol>
               <Text className={styles.helpText}>
                 Microsoft pushes the add-in to assigned users within a few hours. On first launch
