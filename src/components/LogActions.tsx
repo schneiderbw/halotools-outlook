@@ -21,7 +21,12 @@ import {
   Input,
 } from "@fluentui/react-components";
 import { Add24Regular, Attach24Regular } from "@fluentui/react-icons";
-import { appendAction, createTicket, listTicketTypes } from "../lib/halo-api";
+import {
+  appendAction,
+  createTicket,
+  listTicketTypes,
+  stampOutlookThreadFields,
+} from "../lib/halo-api";
 import {
   getBody,
   fetchAllAttachments,
@@ -195,6 +200,16 @@ function AppendDialog({
         emailsubject: email.subject,
         attachments: attachments.length ? attachments : undefined,
         time_taken: timeHours,
+      });
+
+      // Stamp the ticket so future emails in this conversation auto-thread to it.
+      // Non-fatal: if this fails, the append still succeeded.
+      stampOutlookThreadFields(
+        selectedId,
+        email.conversationId,
+        email.internetMessageId,
+      ).catch(() => {
+        /* swallow — append succeeded, threading is best-effort */
       });
 
       if (attachWarning) {

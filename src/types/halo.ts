@@ -110,4 +110,5 @@ export interface UpdateTicketPayload {
   status_id?: number;
   agent_id?: number;
   priority_id?: number;
+  customfields?: Array<{ name: string; value: string | number | boolean }>;
 }

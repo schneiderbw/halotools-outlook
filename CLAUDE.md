@@ -72,4 +72,4 @@ Manifest validation needs network access to `developer.microsoft.com` for the sc
 2. Test against a real Halo tenant — settle the three payload variations listed under Gotchas.
 3. Set up the EasyPanel deployment for `tools.iusehalo.com`.
 4. Register the Halo Connect app in the Rising Tide tenant and run the first end-to-end auth.
-5. v1.5: write a Rewst workflow / Halo intake rule that reads `CFOutlookConversationId` and `CFOutlookInternetMessageId` from inbound replies and threads them to existing tickets, replacing Halo's subject-only matching for the sales mailbox.
+5. v1.5 (optional): Rewst workflow / Halo intake rule that stamps `CFOutlookConversationId` and `CFOutlookInternetMessageId` on tickets created by Halo's *built-in email intake* (sales mailbox auto-create), so they thread the same way as tickets touched by this plugin. The plugin self-stamps on every Create and Append, so this only matters for tickets that never flow through the plugin.

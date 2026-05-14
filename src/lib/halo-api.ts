@@ -216,13 +216,35 @@ export async function createTicket(payload: CreateTicketPayload): Promise<HaloTi
   return res[0];
 }
 
-/** Apply a partial update to an existing ticket (status / agent / priority). */
+/** Apply a partial update to an existing ticket (status / agent / priority / custom fields). */
 export async function updateTicket(payload: UpdateTicketPayload): Promise<HaloTicket> {
   const res = await call<HaloTicket[]>("/Tickets", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
   return res[0];
+}
+
+/**
+ * Stamp the Outlook conversation + message IDs on a ticket so future emails
+ * in the same conversation can find it via findTicketsByConversationId.
+ * No-ops if either ID is missing. Errors are non-fatal — the caller's primary
+ * action (e.g., appending an email) already succeeded.
+ */
+export async function stampOutlookThreadFields(
+  ticketId: number,
+  conversationId: string | undefined,
+  internetMessageId: string | undefined,
+): Promise<void> {
+  const customfields: Array<{ name: string; value: string }> = [];
+  if (conversationId) {
+    customfields.push({ name: "CFOutlookConversationId", value: conversationId });
+  }
+  if (internetMessageId) {
+    customfields.push({ name: "CFOutlookInternetMessageId", value: internetMessageId });
+  }
+  if (customfields.length === 0) return;
+  await updateTicket({ id: ticketId, customfields });
 }
 
 export { HaloApiError };
