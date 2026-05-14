@@ -103,6 +103,12 @@ export interface CreateActionPayload {
   emailsubject?: string;
   /** Decimal hours spent on this action (e.g., 0.25 for 15 minutes). */
   time_taken?: number;
+  /** RFC 5322 Message-ID of the source email — Halo threads on this natively. */
+  internetmessageid?: string;
+  /** Parent's Message-ID from the In-Reply-To header. */
+  inreplyto?: string;
+  /** Space-separated ancestor Message-IDs from the References header. */
+  references?: string;
 }
 
 export interface CreateTicketPayload {
@@ -117,6 +123,14 @@ export interface CreateTicketPayload {
   category_1?: string;
   attachments?: HaloAttachmentInline[];
   customfields?: Array<{ name: string; value: string | number | boolean }>;
+  /** Email source fields — when present, Halo creates the initial action as an email
+   *  and stamps internetmessageid on it, enabling native RFC-based threading. */
+  emailfrom?: string;
+  emailfromname?: string;
+  emailsubject?: string;
+  internetmessageid?: string;
+  inreplyto?: string;
+  references?: string;
 }
 
 /** Partial update payload for an existing ticket. Halo accepts mutated fields only. */

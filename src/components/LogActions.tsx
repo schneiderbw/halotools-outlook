@@ -21,12 +21,7 @@ import {
   Input,
 } from "@fluentui/react-components";
 import { Add24Regular, Attach24Regular } from "@fluentui/react-icons";
-import {
-  appendAction,
-  createTicket,
-  listTicketTypes,
-  stampOutlookThreadFields,
-} from "../lib/halo-api";
+import { appendAction, createTicket, listTicketTypes } from "../lib/halo-api";
 import {
   getBody,
   fetchAllAttachments,
@@ -42,9 +37,6 @@ import type {
   HaloAttachmentInline,
 } from "../types/halo";
 import { getDefaults, setDefaults } from "../lib/defaults";
-
-const CUSTOM_FIELD_CONVERSATION_ID = "CFOutlookConversationId";
-const CUSTOM_FIELD_MESSAGE_ID = "CFOutlookInternetMessageId";
 
 const useStyles = makeStyles({
   root: {
@@ -200,16 +192,9 @@ function AppendDialog({
         emailsubject: email.subject,
         attachments: attachments.length ? attachments : undefined,
         time_taken: timeHours,
-      });
-
-      // Stamp the ticket so future emails in this conversation auto-thread to it.
-      // Non-fatal: if this fails, the append still succeeded.
-      stampOutlookThreadFields(
-        selectedId,
-        email.conversationId,
-        email.internetMessageId,
-      ).catch(() => {
-        /* swallow — append succeeded, threading is best-effort */
+        internetmessageid: email.internetMessageId,
+        inreplyto: email.inReplyTo,
+        references: email.references.length ? email.references.join(" ") : undefined,
       });
 
       if (attachWarning) {
@@ -366,10 +351,12 @@ function CreateDialog({
         user_id: contact?.id,
         tickettype_id: ticketTypeId,
         attachments: attachments.length ? attachments : undefined,
-        customfields: [
-          { name: CUSTOM_FIELD_CONVERSATION_ID, value: email.conversationId },
-          { name: CUSTOM_FIELD_MESSAGE_ID, value: email.internetMessageId },
-        ],
+        emailfrom: email.senderEmail,
+        emailfromname: email.senderName,
+        emailsubject: email.subject,
+        internetmessageid: email.internetMessageId,
+        inreplyto: email.inReplyTo,
+        references: email.references.length ? email.references.join(" ") : undefined,
       });
 
       // Remember selected ticket type as the new default
@@ -449,7 +436,7 @@ function CreateDialog({
             <Text size={200} style={{ marginTop: 12, color: tokens.colorNeutralForeground3 }}>
               Client: {client?.name ?? "—"} · Contact: {contact?.name ?? "—"}
               <br />
-              Conversation ID stored on the ticket for thread linking on future replies.
+              Email headers stamped on the ticket's first action so future replies thread automatically.
             </Text>
           </DialogContent>
           <DialogActions>
