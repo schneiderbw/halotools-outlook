@@ -64,17 +64,18 @@ export interface HaloAgent {
 }
 
 export interface HaloPriority {
-  id: number;
+  /** Halo's GUID identifier. NOT the value you compare to ticket.priority_id. */
+  id: string;
   name: string;
-  priorityid?: number;
+  /** Numeric priority ID — THIS is what ticket.priority_id references. */
+  priorityid: number;
   colour?: string;
   inactive?: boolean;
   /**
-   * SLA scoping. Halo priorities are defined per-SLA — a priority returned from
-   * /Priority without an sla_id is global; otherwise it only applies to tickets
-   * on that SLA. We filter client-side against the ticket's sla_id.
+   * SLA scoping (Halo's response uses `slaid`, no underscore). A priority
+   * without slaid is global; otherwise it only applies to tickets on that SLA.
    */
-  sla_id?: number;
+  slaid?: number;
 }
 
 export interface HaloTicket {
@@ -103,8 +104,10 @@ export interface HaloTicket {
   category_1?: string;
   dateoccurred?: string;
   dateopened?: string;
-  /** ISO date (YYYY-MM-DD or full ISO). Halo's canonical name is "target_date"; some tenants expose "deadlinedate" or "duedate" on read. */
-  target_date?: string;
+  /** ISO datetime. Halo's actual field name is `targetdate` (no underscore). */
+  targetdate?: string;
+  /** Some Halo versions expose a hard deadline separately. Empty/zero-date when unset. */
+  deadlinedate?: string;
   customfields?: Array<{ name: string; value: unknown }>;
 }
 
@@ -177,8 +180,8 @@ export interface UpdateTicketPayload {
   agent_id?: number;
   priority_id?: number;
   customfields?: Array<{ name: string; value: string | number | boolean }>;
-  /** ISO date string for the ticket due / target date. */
-  target_date?: string;
+  /** ISO datetime for the ticket target / due date. Halo expects this exact field name on writes. */
+  targetdate?: string;
 }
 
 /**

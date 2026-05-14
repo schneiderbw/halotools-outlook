@@ -226,7 +226,7 @@ export function TicketList({ label, tickets, onTicketUpdated }: Props) {
         status_id: partial.status_id,
         agent_id: partial.agent_id,
         priority_id: partial.priority_id,
-        target_date: partial.target_date,
+        targetdate: partial.targetdate,
       });
       // Merge server response with any optimistic name fields we set locally.
       onTicketUpdated?.({ ...updated, ...partial, id: ticket.id });
@@ -362,7 +362,7 @@ function TicketRow({
           priorities={priorities}
           busy={busy === "priority"}
           onPick={(p) =>
-            onApply("priority", { priority_id: p.id, priorityname: p.name })
+            onApply("priority", { priority_id: p.priorityid, priorityname: p.name })
           }
           onClear={() => onApply("priority", { priority_id: 0, priorityname: undefined })}
         />
@@ -378,8 +378,8 @@ function TicketRow({
         <DuePill
           ticket={ticket}
           busy={busy === "due"}
-          onChange={(iso) => onApply("due", { target_date: iso })}
-          onClear={() => onApply("due", { target_date: "" })}
+          onChange={(iso) => onApply("due", { targetdate: iso })}
+          onClear={() => onApply("due", { targetdate: "" })}
         />
         <LogTimePill ticket={ticket} busy={busy === "log"} onSubmit={onLogTime} />
       </div>
@@ -499,14 +499,15 @@ function PriorityPill({
 }) {
   const styles = useStyles();
   const [open, setOpen] = useState(false);
-  const current = priorities.find((p) => p.id === ticket.priority_id);
+  // ticket.priority_id is the numeric ID; HaloPriority.priorityid is the
+  // matching numeric (HaloPriority.id is a GUID string, not comparable).
+  const current = priorities.find((p) => p.priorityid === ticket.priority_id);
   const label = ticket.priorityname ?? current?.name ?? "Priority";
 
-  // Halo priorities are defined per-SLA. Showing every priority from /Priority
-  // includes ones that aren't valid for this ticket's SLA and Halo will reject
-  // the update. A priority without sla_id is global and always applies.
+  // Halo priorities are defined per-SLA. The SLA scoping field is `slaid`
+  // (no underscore). A priority without slaid is global and always applies.
   const applicable = priorities.filter(
-    (p) => !p.sla_id || !ticket.sla_id || p.sla_id === ticket.sla_id,
+    (p) => !p.slaid || !ticket.sla_id || p.slaid === ticket.sla_id,
   );
 
   if (busy) {
@@ -540,7 +541,7 @@ function PriorityPill({
             <button
               key={p.id}
               className={
-                p.id === ticket.priority_id
+                p.priorityid === ticket.priority_id
                   ? `${styles.popoverItem} ${styles.popoverItemActive}`
                   : styles.popoverItem
               }
@@ -741,8 +742,8 @@ function DuePill({
 }) {
   const styles = useStyles();
   const [open, setOpen] = useState(false);
-  const formatted = formatDue(ticket.target_date);
-  const initial = ticket.target_date ? ticket.target_date.slice(0, 10) : "";
+  const formatted = formatDue(ticket.targetdate);
+  const initial = ticket.targetdate ? ticket.targetdate.slice(0, 10) : "";
   const [value, setValue] = useState(initial);
 
   useEffect(() => {
@@ -786,7 +787,7 @@ function DuePill({
           />
         </Field>
         <div className={styles.popoverActions}>
-          {ticket.target_date && (
+          {ticket.targetdate && (
             <Button
               appearance="subtle"
               size="small"
