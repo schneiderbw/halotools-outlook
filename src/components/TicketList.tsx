@@ -113,7 +113,10 @@ export function TicketList({ label, tickets, onTicketUpdated }: Props) {
     Office.context.ui.openBrowserWindow(`${haloUrl}/agent?showmenu=false&id=${ticketId}`);
   };
 
-  const apply = async (ticket: HaloTicket, partial: Partial<HaloTicket>) => {
+  const apply = async (
+    ticket: HaloTicket,
+    partial: { status_id?: number; agent_id?: number; priority_id?: number },
+  ) => {
     setBusyTicketId(ticket.id);
     setActionError(undefined);
     try {
