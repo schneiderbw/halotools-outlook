@@ -302,29 +302,31 @@ export function insertIntoBody(html: string): Promise<void> {
  * openBrowserWindow first (the supported way out of a task pane), then a
  * regular window.open. Returns true on success.
  *
- * Crucially, NEVER navigates the task pane itself — if both methods fail
- * (popup blocked, API unavailable), we return false and the caller decides
- * how to surface that (toast, copyable link, etc.). Replacing the task pane's
- * URL with the target turns the pane into an iframe of the destination, which
- * sites that set X-Frame-Options refuse to render — what users actually see
- * is the dreaded blocked-content "no" icon.
+ * Some Outlook hosts (notably new Outlook on Windows) throw a synchronous
+ * exception from openBrowserWindow even *after* the tab has been opened. We
+ * therefore commit to the Office API when it's available: call it, swallow
+ * any throw, return true. Falling through to window.open in that case opens
+ * a second tab — which is what users saw before this guard.
+ *
+ * NEVER navigates the task pane itself. If the Office API is missing and
+ * window.open is blocked, the function returns false and the caller decides
+ * how to surface that (toast, clipboard copy). Replacing the task pane's URL
+ * with a third-party page turns the pane into a broken iframe.
  */
 export function openExternalUrl(url: string): boolean {
-  try {
-    if (Office.context?.ui?.openBrowserWindow) {
+  if (Office.context?.ui?.openBrowserWindow) {
+    try {
       Office.context.ui.openBrowserWindow(url);
-      return true;
+    } catch {
+      /* swallow — host can throw after success */
     }
-  } catch {
-    /* fall through to window.open */
+    return true;
   }
   try {
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (w) return true;
+    return !!window.open(url, "_blank", "noopener,noreferrer");
   } catch {
-    /* popup blocked or sandboxed */
+    return false;
   }
-  return false;
 }
 
 /** Save the in-progress compose draft and return its server-side itemId. */
