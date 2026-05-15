@@ -88,6 +88,26 @@
   // rather than anything inside the handler.
   logEvent("info", "launchevent.js module loaded");
 
+  // Signal to Office.js that the add-in has finished its load sequence.
+  // Without this, Office.js stays in a partial-init state and the iframe's
+  // own dispatcher throws "Office.js has not fully loaded" when Outlook fires
+  // the messageSending event — meaning our (correctly-registered) handler is
+  // never invoked and the Smart Alerts progress dialog hangs forever.
+  // Microsoft's smart-alerts-onmessagesend sample calls Office.onReady() at
+  // the top of launchevent.js for exactly this reason.
+  // Calling with no callback is sufficient — it's the signal that flips the
+  // internal isReady gate, not the awaiting that matters.
+  if (typeof Office !== "undefined" && typeof Office.onReady === "function") {
+    try {
+      Office.onReady();
+      logEvent("info", "Office.onReady() called");
+    } catch (e) {
+      logEvent("error", "Office.onReady() threw: " + (e && e.message ? e.message : String(e)));
+    }
+  } else {
+    logEvent("error", "Office or Office.onReady unavailable at module load");
+  }
+
   // Wrap fetch with an AbortController-driven timeout. Rejects with a tagged
   // error if the request runs longer than ms — covers hung CORS preflights.
   function fetchWithTimeout(url, init, ms) {
