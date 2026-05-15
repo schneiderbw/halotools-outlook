@@ -1,4 +1,5 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { MANIFEST_VERSION } from "./version";
 
 export interface TenantInput {
   haloBaseUrl: string;
@@ -11,12 +12,12 @@ export interface TenantInput {
    */
   existingAppId?: string;
   /**
-   * The existing package's `version` field (e.g. "0.1.0"). M365 admin's
-   * update flow rejects uploads whose version isn't strictly greater than
-   * what's currently deployed, so we bump the patch when we know the prior
-   * value. Leave undefined to use a timestamp-based version (still strictly
-   * greater than `0.1.0`) — that's the paste-ID branch where we don't have
-   * the prior manifest in hand.
+   * The existing package's `version` field (e.g. "1.0.0.3"). Used to determine
+   * the next revision: if the prior version's first three segments match the
+   * current MANIFEST_VERSION, we increment the 4th segment; if they differ
+   * (because MANIFEST_VERSION has since been bumped manually), we reset to
+   * `${MANIFEST_VERSION}.0`. Leave undefined for first-time setup — that
+   * starts at `${MANIFEST_VERSION}.0`.
    */
   existingVersion?: string;
 }
@@ -77,35 +78,24 @@ function hostnameOf(url: string): string {
 }
 
 /**
- * Bump the patch component of a semver-ish version (`X.Y.Z` or `X.Y.Z.W`).
- * M365 admin's Update flow rejects uploads whose version isn't strictly greater
- * than the currently-deployed one, so we increment here on every regeneration.
- * Falls back to a timestamp-based version if the input doesn't parse — the
- * timestamp form is also strictly greater than any reasonable 0.1.x value.
+ * Produce the next 4-segment manifest version.
+ *
+ *  - If `prior` shares its first three segments with MANIFEST_VERSION, bump the
+ *    4th segment (revision). M365 admin's update flow requires strictly-greater.
+ *  - If `prior` differs (or is missing/malformed) — typically because someone
+ *    manually bumped MANIFEST_VERSION since the last upload — reset to
+ *    `${MANIFEST_VERSION}.0`. The first three segments increasing is enough to
+ *    satisfy strictly-greater on its own, so a `.0` revision is fine.
  */
-function bumpVersion(version: string): string {
-  const parts = version.split(".");
-  if (parts.length < 3 || parts.length > 4) return timestampVersion();
-  const last = Number(parts[parts.length - 1]);
-  if (!Number.isFinite(last)) return timestampVersion();
-  parts[parts.length - 1] = String(last + 1);
-  return parts.join(".");
-}
-
-/**
- * Monotonically-increasing version of the shape `1.<days-since-2024-01-01>.<minutes-since-midnight-UTC>`.
- * Used when we're updating a deployment but don't have the prior version
- * string (paste-ID flow). Major is `1` to ensure we always beat the
- * template's default of `0.1.0`.
- */
-function timestampVersion(): string {
-  const epoch = Date.UTC(2024, 0, 1);
-  const now = Date.now();
-  const days = Math.max(1, Math.floor((now - epoch) / 86_400_000));
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  const minutes = Math.floor((now - startOfDay.getTime()) / 60_000);
-  return `1.${days}.${minutes}`;
+function nextVersion(prior: string | undefined): string {
+  if (!prior) return `${MANIFEST_VERSION}.0`;
+  const parts = prior.split(".");
+  if (parts.length < 3 || parts.length > 4) return `${MANIFEST_VERSION}.0`;
+  const priorBase = parts.slice(0, 3).join(".");
+  if (priorBase !== MANIFEST_VERSION) return `${MANIFEST_VERSION}.0`;
+  const rev = parts.length === 4 ? Number(parts[3]) : 0;
+  if (!Number.isFinite(rev)) return `${MANIFEST_VERSION}.0`;
+  return `${MANIFEST_VERSION}.${rev + 1}`;
 }
 
 /**
@@ -119,25 +109,23 @@ function timestampVersion(): string {
  */
 export function buildManifest(template: Manifest, input: TenantInput): Manifest {
   const haloHost = hostnameOf(input.haloBaseUrl);
-  const params = new URLSearchParams({
-    halo: input.haloBaseUrl,
-    clientId: input.clientId,
-  }).toString();
 
   const cloned: Manifest = JSON.parse(JSON.stringify(template));
   cloned.id = input.existingAppId ?? crypto.randomUUID();
+  // Always compute the next version from the prior, falling back to
+  // `${MANIFEST_VERSION}.0` when no prior is known. M365 admin rejects updates
+  // whose version isn't strictly greater than what's deployed; nextVersion
+  // guarantees that as long as MANIFEST_VERSION doesn't move backwards.
+  cloned.version = nextVersion(input.existingVersion);
 
-  // Version handling — M365 admin rejects update uploads whose version isn't
-  // strictly greater than what's deployed. Three cases:
-  //   1. Updating with an uploaded zip → bump the patch of the prior version.
-  //   2. Updating with just a pasted GUID → use timestamp-based version
-  //      (always > 0.1.x of any reasonable prior deployment).
-  //   3. Fresh install → keep the template's version unchanged.
-  if (input.existingVersion) {
-    cloned.version = bumpVersion(input.existingVersion);
-  } else if (input.existingAppId) {
-    cloned.version = timestampVersion();
-  }
+  // Runtime URLs carry the manifest version as `mv` so the running SPA can
+  // detect when a newer manifest is available and prompt the admin to re-upload.
+  // Compared first-three-segments-only against /outlook/latest.json's manifestVersion.
+  const params = new URLSearchParams({
+    halo: input.haloBaseUrl,
+    clientId: input.clientId,
+    mv: cloned.version,
+  }).toString();
 
   const validDomains = new Set(cloned.validDomains ?? []);
   validDomains.add(haloHost);

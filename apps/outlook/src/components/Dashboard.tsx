@@ -26,6 +26,7 @@ import { LogActions } from "./LogActions";
 import { SettingsScreen } from "./SettingsScreen";
 import { ActivityFeed } from "./ActivityFeed";
 import { LogNoteDialog } from "./LogNoteDialog";
+import { UpdateBanner } from "./UpdateBanner";
 import {
   findUserByEmail,
   findClientByDomain,
@@ -208,6 +209,7 @@ export function Dashboard({ email, onSignedOut }: Props) {
 
   return (
     <div className={styles.root}>
+      <UpdateBanner />
       <div className={styles.header}>
         <Text className={styles.brand}>HaloPSA</Text>
         <div style={{ display: "flex", gap: 4 }}>

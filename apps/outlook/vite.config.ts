@@ -1,14 +1,36 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
+import { MANIFEST_VERSION } from "./src/setup/version";
 
 // Deployed at https://tools.iusehalo.com/outlook/ — base path matches.
 // Override with VITE_BASE=/ for local dev or alternative paths.
 const BASE = process.env.VITE_BASE ?? "/outlook/";
 
+// Emit /outlook/latest.json so the running SPA can detect when a newer
+// manifest is available. Compared first-three-segments-only against the `mv`
+// query param baked into the installed manifest's runtime URLs.
+function emitLatestJson(): Plugin {
+  return {
+    name: "emit-latest-json",
+    apply: "build",
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "latest.json",
+        source: JSON.stringify(
+          { manifestVersion: MANIFEST_VERSION, released: new Date().toISOString() },
+          null,
+          2,
+        ),
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: BASE,
-  plugins: [react()],
+  plugins: [react(), emitLatestJson()],
   build: {
     outDir: "dist",
     sourcemap: true,

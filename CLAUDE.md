@@ -83,6 +83,29 @@ Email-to-ticket threading uses RFC 5322 headers — no Halo custom fields, no ad
 - **roamingSettings has a ~32 KB total cap.** Tokens + tenant config + defaults fit comfortably, but don't dump large objects in there.
 - **Manifest version bumps.** M365 admin rejects update uploads whose version isn't strictly greater than the deployed one. The setup wizard's `package.ts` bumps the patch on every regeneration when an existing version is known, or falls back to a timestamp-based version.
 
+## Manifest version policy
+
+The outlook manifest carries a 4-segment Office version `major.minor.patch.revision`:
+
+- **`major.minor.patch`** — single source of truth at `apps/outlook/src/setup/version.ts` (`MANIFEST_VERSION`). Bump **manually** when manifest CONTENT changes in a way that requires admins to re-upload the .zip. Code-only changes (anything served from our origin) don't qualify.
+- **`revision`** — auto-bumped by the setup wizard on every regeneration so each download is strictly greater than the prior one (required by M365 admin's update flow). Invisible to admins; ignored by the upgrade banner.
+
+**Bump `MANIFEST_VERSION` when adding/changing:**
+- permissions (`MailboxItem.*`, `Mailbox.*`, scopes)
+- runtime declarations (new runtimes, new actions, new event handlers like `OnMessageSend`)
+- runtime URLs (host/path — query params are stamped by the wizard so those don't count)
+- icons (URL or size set)
+- `requirements.capabilities` minVersion bumps
+- ribbon/command surface changes that admins should see reflected in their tenant
+
+**Don't bump for:**
+- code logic in any .ts/.tsx/.js bundled into the SPA
+- task-pane UI changes
+- bug fixes inside `launchevent.js` / `commands.js`
+- adding/removing components, helpers, dependencies
+
+When bumping, update `MANIFEST_VERSION` only — the wizard handles the `.revision` reset on the next regeneration. The build emits `/outlook/latest.json` from this constant; the running SPA fetches it and compares against the `mv` URL query stamped by the wizard. Mismatch on `major.minor.patch` triggers a banner prompting the admin to re-upload.
+
 ## Things explicitly deferred (don't add without asking)
 
 - Backend proxy / API gateway — pure SPA is the design.

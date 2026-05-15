@@ -302,13 +302,28 @@
     });
   }
 
-  // Registration must happen at module load — Outlook dispatches by name.
-  Office.onReady(function () {
-    if (!Office.actions || typeof Office.actions.associate !== "function") {
-      logEvent("error", "Office.actions.associate unavailable — handler cannot register");
-      return;
-    }
+  // Register at module load — NOT inside Office.onReady. Microsoft's reference
+  // implementations (smart-alerts-walkthrough sample) call associate at top
+  // level so the handler is wired before Outlook dispatches the event. Doing
+  // it inside Office.onReady introduces a callback delay during which a
+  // racing dispatch finds no handler and silently drops the event.
+  // Office.actions is part of office.js and becomes available as soon as the
+  // script tag finishes — earlier than Office.onReady fires.
+  if (typeof Office !== "undefined" && Office.actions && typeof Office.actions.associate === "function") {
     Office.actions.associate("onMessageSendHandler", onMessageSendHandler);
-    logEvent("info", "handler registered");
-  });
+    logEvent("info", "handler registered via Office.actions.associate");
+  } else {
+    // Fall back to onReady if office.js hasn't fully hooked up actions yet.
+    logEvent("warn", "Office.actions.associate unavailable at module load — falling back to Office.onReady");
+    if (typeof Office !== "undefined" && typeof Office.onReady === "function") {
+      Office.onReady(function () {
+        if (Office.actions && typeof Office.actions.associate === "function") {
+          Office.actions.associate("onMessageSendHandler", onMessageSendHandler);
+          logEvent("info", "handler registered via Office.onReady fallback");
+        } else {
+          logEvent("error", "Office.actions.associate still unavailable inside Office.onReady");
+        }
+      });
+    }
+  }
 })();
