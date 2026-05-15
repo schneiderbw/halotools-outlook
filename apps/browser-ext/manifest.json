@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "HaloPSA Tools",
+  "version": "0.1.0",
+  "description": "Surfaces HaloPSA contact + ticket context wherever you browse. Inline email badges and toolbar lookup.",
+  "minimum_chrome_version": "116",
+  "action": {
+    "default_title": "HaloPSA Tools",
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "options_ui": {
+    "page": "src/options/index.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "*://mail.google.com/*",
+        "*://outlook.office.com/*",
+        "*://outlook.live.com/*",
+        "*://outlook.office365.com/*"
+      ],
+      "js": ["src/content/highlight-emails.ts"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage", "identity", "tabs"],
+  "host_permissions": ["<all_urls>"]
+}

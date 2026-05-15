@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- HaloPSA mark: red disc with white speech-bubble cutout -->
+  <circle cx="64" cy="64" r="62" fill="#EF3340"/>
+  <!-- Inner white bubble: larger circle to give a thinner red ring -->
+  <circle cx="64" cy="62" r="42" fill="#FFFFFF"/>
+  <!-- Tail: triangle extending down-left, overlapping the inner circle so it reads as one shape -->
+  <path d="M 44 92 L 30 112 L 58 94 Z" fill="#FFFFFF"/>
+</svg>

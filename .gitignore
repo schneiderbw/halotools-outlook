@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-node/
 .env
 .env.local
 .env.*.local
@@ -8,6 +9,5 @@ dist/
 .vscode/
 .idea/
 coverage/
-dist-node/
 tsconfig.tsbuildinfo
 .claude/
