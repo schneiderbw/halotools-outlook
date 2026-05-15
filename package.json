@@ -1,30 +1,23 @@
 {
-  "name": "halo-outlook-addin",
+  "name": "halotools-outlook-workspace",
   "version": "0.1.0",
   "private": true,
-  "description": "Outlook task-pane add-in for HaloPSA — sender lookup, ticket context, log-to-ticket. Multi-tenant SPA at tools.iusehalo.com.",
-  "type": "module",
+  "description": "npm workspace root for the iusehalo tools — the @iusehalo/halo-api shared client plus the Outlook, Teams, MCP and browser-extension apps.",
+  "workspaces": [
+    "packages/*",
+    "apps/outlook",
+    "apps/teams",
+    "apps/mcp",
+    "apps/browser-ext"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview --port 4173",
-    "typecheck": "tsc -b --noEmit",
-    "validate-manifest": "npx office-addin-manifest validate public/manifest.json"
-  },
-  "dependencies": {
-    "@fluentui/react-components": "^9.54.0",
-    "@fluentui/react-icons": "^2.0.245",
-    "fflate": "^0.8.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
-  },
-  "devDependencies": {
-    "@types/office-js": "^1.0.430",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "office-addin-manifest": "^1.13.5",
-    "typescript": "^5.5.3",
-    "vite": "^5.3.4"
+    "dev": "npm -w halo-outlook-addin run dev",
+    "build": "npm -w @iusehalo/halo-api run build && npm -w halo-outlook-addin run build && npm -w halo-teams-app run build",
+    "build:outlook": "npm -w @iusehalo/halo-api run build && npm -w halo-outlook-addin run build",
+    "build:teams": "npm -w @iusehalo/halo-api run build && npm -w halo-teams-app run build",
+    "build:mcp": "npm -w @iusehalo/halo-api run build && npm -w halo-mcp-server run build",
+    "build:browser-ext": "npm -w @iusehalo/halo-api run build && npm -w halo-browser-ext run build",
+    "typecheck": "npm -w @iusehalo/halo-api run typecheck && npm -w halo-outlook-addin exec -- tsc -b && npm -w halo-teams-app exec -- tsc -b",
+    "validate-manifest": "npm -w halo-outlook-addin run validate-manifest"
   }
 }

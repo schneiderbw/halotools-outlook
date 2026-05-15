@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-node/
 .env
 .env.local
 .env.*.local
@@ -8,22 +9,5 @@ dist/
 .vscode/
 .idea/
 coverage/
-dist-node/
 tsconfig.tsbuildinfo
 .claude/
-
-# In-flight agent worktree outputs — these directories belong to the
-# respective agent branches and get merged in via PR, not by stray files
-# leaking into main. Remove these lines after the four sibling packages
-# (teams, mcp, browser-ext, packages/halo-api) are properly integrated.
-mcp/
-browser-ext/
-packages/
-apps/
-
-# Teams-app build/install outputs (the teams/ source itself is committed on
-# this branch — only ignore its generated artefacts).
-teams/node_modules/
-teams/dist/
-teams/dist-node/
-teams/tsconfig.tsbuildinfo
