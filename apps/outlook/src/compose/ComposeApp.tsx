@@ -265,9 +265,13 @@ function RecipientsSection() {
   const [recipients, setRecipients] = useState<ResolvedRecipient[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [error, setError] = useState<string | undefined>();
+  // Bumping this triggers a re-fetch. Used both by the Office RecipientsChanged
+  // handler and the manual Refresh button.
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadingList(true);
     (async () => {
       try {
         const { to } = await getRecipients();
@@ -316,11 +320,51 @@ function RecipientsSection() {
     return () => {
       cancelled = true;
     };
+  }, [reloadToken]);
+
+  // Subscribe to Outlook's RecipientsChanged event so the resolved-recipients
+  // list stays in sync as the user adds/removes addresses in the compose
+  // pane. Without this, the panel only ever reflects the recipients present
+  // when the task pane first opened, which is the bug the user reported.
+  useEffect(() => {
+    const item = Office.context?.mailbox?.item;
+    if (!item || typeof item.addHandlerAsync !== "function") return;
+    const handler = () => setReloadToken((n) => n + 1);
+    try {
+      item.addHandlerAsync(
+        Office.EventType.RecipientsChanged,
+        handler,
+        (result) => {
+          if (result.status !== Office.AsyncResultStatus.Succeeded) {
+            // Non-fatal — the manual Refresh button is the fallback.
+          }
+        },
+      );
+    } catch {
+      /* Read-mode items don't support this event; harmless to swallow. */
+    }
+    return () => {
+      try {
+        item.removeHandlerAsync?.(Office.EventType.RecipientsChanged, () => {});
+      } catch {
+        /* swallow */
+      }
+    };
   }, []);
 
   return (
     <div className={styles.section}>
-      <Text className={styles.sectionLabel}>Recipients</Text>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Text className={styles.sectionLabel}>Recipients</Text>
+        <Button
+          appearance="subtle"
+          size="small"
+          onClick={() => setReloadToken((n) => n + 1)}
+          aria-label="Refresh recipients"
+        >
+          Refresh
+        </Button>
+      </div>
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>

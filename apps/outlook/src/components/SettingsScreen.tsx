@@ -135,6 +135,23 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
       .finally(() => setLoading(false));
   }, []);
 
+  // Poll the diagnostic log every second so entries written by other runtimes
+  // (notably the launch-event handler firing on Send) appear live without the
+  // user having to click Refresh. Cheap — read is a JSON.parse off a small
+  // localStorage key.
+  useEffect(() => {
+    const tick = () => {
+      const next = getEvents();
+      setEvents((prev) =>
+        prev.length === next.length && prev[prev.length - 1]?.ts === next[next.length - 1]?.ts
+          ? prev
+          : next,
+      );
+    };
+    const handle = window.setInterval(tick, 1000);
+    return () => window.clearInterval(handle);
+  }, []);
+
   const refreshEvents = () => setEvents(getEvents());
   const handleCopyEvents = async () => {
     try {
@@ -145,8 +162,8 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
     }
     setTimeout(() => setCopyStatus(undefined), 2500);
   };
-  const handleClearEvents = async () => {
-    await clearEvents();
+  const handleClearEvents = () => {
+    clearEvents();
     setEvents([]);
   };
 

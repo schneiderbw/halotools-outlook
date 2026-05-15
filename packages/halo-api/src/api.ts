@@ -378,35 +378,49 @@ export async function getCurrentAgent(
 // ---------- Write paths ----------
 
 // Halo's write endpoints accept an array payload but inconsistently return
-// either the single created/updated entity OR a single-element array wrapping
-// it — depending on tenant version. Normalise both shapes to the entity.
-function unwrapWriteResponse<T>(res: T | T[]): T {
-  return Array.isArray(res) ? res[0] : res;
+// the created/updated entity in one of THREE shapes depending on tenant
+// version and endpoint:
+//   1. Single object:        { id: 2381, ... }
+//   2. Array of one:         [{ id: 2381, ... }]
+//   3. Collection-wrapped:   { actions: [{ id: ... }] } or { tickets: [...] }
+// Normalise all three to the entity itself.
+function unwrapWriteResponse<T>(
+  res: T | T[] | Record<string, unknown>,
+  collectionKey?: string,
+): T {
+  if (Array.isArray(res)) return res[0];
+  if (res && typeof res === "object") {
+    if (collectionKey && Array.isArray((res as Record<string, unknown>)[collectionKey])) {
+      return ((res as Record<string, unknown>)[collectionKey] as T[])[0];
+    }
+    // Fall through: the response IS the entity (case 1).
+  }
+  return res as T;
 }
 
 export async function appendAction(payload: CreateActionPayload): Promise<HaloAction> {
-  const res = await call<HaloAction | HaloAction[]>("/Actions", {
+  const res = await call<HaloAction | HaloAction[] | { actions?: HaloAction[] }>("/Actions", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  return unwrapWriteResponse(res);
+  return unwrapWriteResponse<HaloAction>(res, "actions");
 }
 
 export async function createTicket(payload: CreateTicketPayload): Promise<HaloTicket> {
-  const res = await call<HaloTicket | HaloTicket[]>("/Tickets", {
+  const res = await call<HaloTicket | HaloTicket[] | { tickets?: HaloTicket[] }>("/Tickets", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  return unwrapWriteResponse(res);
+  return unwrapWriteResponse<HaloTicket>(res, "tickets");
 }
 
 /** Apply a partial update to an existing ticket (status / agent / priority / custom fields). */
 export async function updateTicket(payload: UpdateTicketPayload): Promise<HaloTicket> {
-  const res = await call<HaloTicket | HaloTicket[]>("/Tickets", {
+  const res = await call<HaloTicket | HaloTicket[] | { tickets?: HaloTicket[] }>("/Tickets", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  return unwrapWriteResponse(res);
+  return unwrapWriteResponse<HaloTicket>(res, "tickets");
 }
 
 /** Full client record — includes assigned account manager and other fields not in list results. */
@@ -465,11 +479,11 @@ export async function getContactStats(
 
 /** Create a new contact (HaloPSA "user"). Mirrors createTicket's array-wrapped POST shape. */
 export async function createContact(payload: CreateContactPayload): Promise<HaloUser> {
-  const res = await call<HaloUser | HaloUser[]>("/Users", {
+  const res = await call<HaloUser | HaloUser[] | { users?: HaloUser[] }>("/Users", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  return unwrapWriteResponse(res);
+  return unwrapWriteResponse<HaloUser>(res, "users");
 }
 
 /**
