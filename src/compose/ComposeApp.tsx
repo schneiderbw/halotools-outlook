@@ -16,6 +16,14 @@ import {
   Skeleton,
   SkeletonItem,
   Field,
+  Button,
+  Dialog,
+  DialogSurface,
+  DialogBody,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Textarea,
 } from "@fluentui/react-components";
 import {
   Search24Regular,
@@ -23,6 +31,8 @@ import {
   BookQuestionMark24Regular,
   Send24Regular,
   CheckmarkCircle16Filled,
+  Mail24Regular,
+  Add24Regular,
 } from "@fluentui/react-icons";
 import { ConfigScreen } from "../components/ConfigScreen";
 import { AuthScreen } from "../components/AuthScreen";
@@ -33,6 +43,10 @@ import {
   findClientByDomain,
   searchTickets,
   searchKbArticles,
+  searchCannedText,
+  listCannedTextGroups,
+  createCannedText,
+  createCannedTextGroup,
 } from "../lib/halo-api";
 import {
   getRecipients,
@@ -45,6 +59,8 @@ import type {
   HaloClient,
   HaloTicket,
   HaloKbArticle,
+  HaloCannedText,
+  HaloCannedTextGroup,
 } from "../types/halo";
 
 type Phase = "loading" | "needs-config" | "needs-auth" | "ready";
@@ -224,6 +240,8 @@ export function ComposeApp() {
       <div className={styles.body}>
         <RecipientsSection />
         <Divider />
+        <InsertCannedTextSection />
+        <Divider />
         <InsertTicketSection />
         <Divider />
         <InsertKbSection />
@@ -350,6 +368,340 @@ function RecipientRow({ recipient }: { recipient: ResolvedRecipient }) {
         </Badge>
       )}
     </div>
+  );
+}
+
+// ---------- Insert canned-text section ----------
+//
+// Canned texts in Halo are saved email/ticket boilerplate, organised into groups
+// (Oppos, Service, DIY Halo, SOWs, ...). We let the user filter by group, search
+// by name or body, click to insert the HTML into the draft at cursor, and save
+// a new canned text from inside Outlook.
+
+const ALL_GROUPS_KEY = -1; // sentinel meaning "no group filter"
+
+function InsertCannedTextSection() {
+  const styles = useStyles();
+  const [query, setQuery] = useState("");
+  const [groupId, setGroupId] = useState<number>(ALL_GROUPS_KEY);
+  const [groups, setGroups] = useState<HaloCannedTextGroup[]>([]);
+  const [toast, setToast] = useState<string | undefined>();
+  const [actionError, setActionError] = useState<string | undefined>();
+  const [saveOpen, setSaveOpen] = useState(false);
+
+  useEffect(() => {
+    listCannedTextGroups().then(setGroups).catch(() => {});
+  }, []);
+
+  // The hook only re-fetches on query changes; we also want group changes to
+  // trigger a re-filter. Compose a stable cache key.
+  const searchKey = `${query} ${groupId}`;
+  const search = (_q: string) =>
+    searchCannedText(query, groupId === ALL_GROUPS_KEY ? undefined : groupId);
+
+  const { results, loading, error: searchError } = useDebouncedSearch<HaloCannedText>(
+    searchKey,
+    search,
+    { minLength: 0 },
+  );
+  const error = actionError ?? searchError;
+
+  const onPick = async (c: HaloCannedText) => {
+    try {
+      const html = c.html?.trim() || escapeHtml(c.text ?? "");
+      await insertIntoBody(html);
+      setToast(`Inserted "${c.name}"`);
+      setTimeout(() => setToast(undefined), 3000);
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
+  };
+
+  return (
+    <div className={styles.section}>
+      <Text className={styles.sectionLabel}>
+        <Mail24Regular
+          style={{ verticalAlign: "middle", marginRight: 4, width: 14, height: 14 }}
+        />
+        Insert canned text
+      </Text>
+
+      <Field label="Filter by group">
+        <select
+          value={groupId}
+          onChange={(e) => setGroupId(Number(e.target.value))}
+          style={{
+            padding: "4px 8px",
+            border: `1px solid ${tokens.colorNeutralStroke1}`,
+            borderRadius: tokens.borderRadiusMedium,
+            background: tokens.colorNeutralBackground1,
+            fontSize: tokens.fontSizeBase300,
+          }}
+        >
+          <option value={ALL_GROUPS_KEY}>All groups</option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Search">
+        <Input
+          value={query}
+          placeholder="Filter by name or body…"
+          onChange={(_, d) => setQuery(d.value)}
+          contentBefore={<Search24Regular />}
+        />
+      </Field>
+
+      <Button
+        size="small"
+        appearance="subtle"
+        icon={<Add24Regular />}
+        onClick={() => setSaveOpen(true)}
+        style={{ alignSelf: "flex-start" }}
+      >
+        Save current draft as canned text
+      </Button>
+
+      {loading && (
+        <div>
+          <Spinner size="extra-tiny" /> Loading…
+        </div>
+      )}
+
+      {!loading && results.length === 0 && (
+        <Text className={styles.empty}>
+          {query.trim() || groupId !== ALL_GROUPS_KEY
+            ? "No canned texts match."
+            : "No canned texts."}
+        </Text>
+      )}
+
+      {results.length > 0 && (
+        <div className={styles.resultList}>
+          {results.map((c) => (
+            <div
+              key={c.id}
+              className={styles.resultRow}
+              onClick={() => onPick(c)}
+              role="button"
+              tabIndex={0}
+            >
+              <div className={styles.resultPrimary}>{c.name}</div>
+              <div className={styles.resultSecondary}>
+                {(c.text ?? "").slice(0, 120)}
+                {(c.text ?? "").length > 120 ? "…" : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <MessageBar intent="error">
+          <MessageBarBody>{error}</MessageBarBody>
+        </MessageBar>
+      )}
+
+      {toast && (
+        <div className={styles.toast}>
+          <CheckmarkCircle16Filled />
+          <span>{toast}</span>
+        </div>
+      )}
+
+      <SaveCannedTextDialog
+        open={saveOpen}
+        groups={groups}
+        defaultGroupId={groupId === ALL_GROUPS_KEY ? undefined : groupId}
+        onClose={() => setSaveOpen(false)}
+        onCreated={(c) => {
+          setSaveOpen(false);
+          setToast(`Saved "${c.name}"`);
+          setTimeout(() => setToast(undefined), 3000);
+        }}
+      />
+    </div>
+  );
+}
+
+function SaveCannedTextDialog({
+  open,
+  groups,
+  defaultGroupId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  groups: HaloCannedTextGroup[];
+  defaultGroupId?: number;
+  onClose: () => void;
+  onCreated: (c: HaloCannedText) => void;
+}) {
+  const [name, setName] = useState("");
+  const [groupId, setGroupId] = useState<number | undefined>(defaultGroupId);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  const [localGroups, setLocalGroups] = useState(groups);
+
+  useEffect(() => {
+    setLocalGroups(groups);
+  }, [groups]);
+
+  useEffect(() => {
+    if (!open) return;
+    setError(undefined);
+    setBusy(false);
+    setName("");
+    setText("");
+    setGroupId(defaultGroupId);
+    setNewGroupName("");
+    setCreatingGroup(false);
+    // Prefill with the current draft body so the agent can save what they
+    // just wrote without copy-paste.
+    Office.context.mailbox.item?.body?.getAsync(Office.CoercionType.Text, (r) => {
+      if (r.status === Office.AsyncResultStatus.Succeeded) {
+        setText(r.value || "");
+      }
+    });
+  }, [open, defaultGroupId]);
+
+  const submit = async () => {
+    if (!name.trim() || !text.trim()) {
+      setError("Name and body are required.");
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      let targetGroupId = groupId;
+      if (creatingGroup && newGroupName.trim()) {
+        const created = await createCannedTextGroup(newGroupName.trim());
+        targetGroupId = created.id;
+      }
+      // Need both plain and HTML representations. Wrap plain in <p> tags as a
+      // minimal default; Halo's UI accepts both.
+      const html = `<p>${escapeHtml(text).replace(/\r?\n\r?\n/g, "</p><p>").replace(/\r?\n/g, "<br>")}</p>`;
+      const created = await createCannedText({
+        name: name.trim(),
+        text: text.trim(),
+        html,
+        group_id: targetGroupId,
+      });
+      onCreated(created);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(_, d) => !d.open && onClose()}>
+      <DialogSurface>
+        <DialogBody>
+          <DialogTitle>Save as canned text</DialogTitle>
+          <DialogContent>
+            <Field label="Name" required>
+              <Input
+                value={name}
+                onChange={(_, d) => setName(d.value)}
+                placeholder="e.g. CX - Refill Hours"
+              />
+            </Field>
+
+            <Field label="Group" style={{ marginTop: 10 }}>
+              {creatingGroup ? (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Input
+                    value={newGroupName}
+                    placeholder="New group name"
+                    onChange={(_, d) => setNewGroupName(d.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    size="small"
+                    appearance="secondary"
+                    onClick={() => {
+                      setCreatingGroup(false);
+                      setNewGroupName("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <select
+                    value={groupId ?? ""}
+                    onChange={(e) =>
+                      setGroupId(e.target.value === "" ? undefined : Number(e.target.value))
+                    }
+                    style={{
+                      flex: 1,
+                      padding: "4px 8px",
+                      border: `1px solid ${tokens.colorNeutralStroke1}`,
+                      borderRadius: tokens.borderRadiusMedium,
+                      background: tokens.colorNeutralBackground1,
+                      fontSize: tokens.fontSizeBase300,
+                    }}
+                  >
+                    <option value="">(No group)</option>
+                    {localGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    size="small"
+                    appearance="subtle"
+                    icon={<Add24Regular />}
+                    onClick={() => setCreatingGroup(true)}
+                  >
+                    New group
+                  </Button>
+                </div>
+              )}
+            </Field>
+
+            <Field label="Body" required style={{ marginTop: 10 }}>
+              <Textarea
+                value={text}
+                onChange={(_, d) => setText(d.value)}
+                rows={8}
+                placeholder="Plain text — Halo will format on insert."
+              />
+            </Field>
+
+            {error && (
+              <MessageBar intent="error" style={{ marginTop: 10 }}>
+                <MessageBarBody>{error}</MessageBarBody>
+              </MessageBar>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button appearance="secondary" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button
+              appearance="primary"
+              onClick={submit}
+              disabled={busy || !name.trim() || !text.trim()}
+              icon={busy ? <Spinner size="tiny" /> : undefined}
+            >
+              {busy ? "Saving…" : "Save"}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
   );
 }
 

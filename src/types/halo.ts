@@ -202,3 +202,40 @@ export interface HaloKbArticle {
   details?: string;
   tags?: Array<{ value: string }>;
 }
+
+/**
+ * Saved canned-text entry from /CannedText.
+ * - text: plain-text body (often older imports)
+ * - html: rich-HTML body (what we insert into compose)
+ * - group_id: foreign key to /Lookup?lookupid=45 (canned-text groups)
+ * - restriction_type: 0 = open, 2 = agent-restricted, 3 = department-restricted
+ */
+export interface HaloCannedText {
+  id: number;
+  guid?: string;
+  name: string;
+  group_id: number;
+  text?: string;
+  html?: string;
+  restriction_type?: number;
+  is_favourite?: boolean;
+  entity?: number;
+}
+
+/** Lookup entry from /Lookup?lookupid=45 — Halo's canned-text group list. */
+export interface HaloCannedTextGroup {
+  id: number;
+  name: string;
+  /** 0 = Tickets/email type, 1 = Chat. We default new groups to 0. */
+  valueint1?: number;
+  sequence?: number;
+}
+
+export interface CreateCannedTextPayload {
+  name: string;
+  text: string;
+  html: string;
+  group_id?: number;
+  /** Default 0 (open). 2 restricts to listed agents, 3 to listed departments. */
+  restriction_type?: number;
+}

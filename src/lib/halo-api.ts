@@ -10,10 +10,13 @@ import type {
   HaloStatus,
   HaloAgent,
   HaloKbArticle,
+  HaloCannedText,
+  HaloCannedTextGroup,
   HaloPriority,
   CreateTicketPayload,
   CreateActionPayload,
   CreateContactPayload,
+  CreateCannedTextPayload,
   UpdateTicketPayload,
 } from "../types/halo";
 
@@ -114,6 +117,84 @@ export async function searchTickets(query: string, limit = 25): Promise<HaloTick
   });
   const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
   return Array.isArray(res) ? res : res.tickets;
+}
+
+// ---------- Canned text ----------
+
+/** Cache of the full canned-text list. Halo doesn't support server-side search reliably
+ * on /CannedText, so we pull once and filter in-memory. The list is small enough
+ * (hundreds of entries) that this is fast and avoids hitting the API on every keystroke. */
+let _cannedTextCache: HaloCannedText[] | undefined;
+
+export async function listCannedText(force = false): Promise<HaloCannedText[]> {
+  if (_cannedTextCache && !force) return _cannedTextCache;
+  const q = new URLSearchParams({
+    showall: "true",
+    entity: "0",
+    access_control_level: "2",
+  });
+  const res = await call<HaloCannedText[] | { canned_texts: HaloCannedText[] }>(
+    `/CannedText?${q}`,
+  );
+  _cannedTextCache = Array.isArray(res) ? res : (res.canned_texts ?? []);
+  return _cannedTextCache;
+}
+
+/** Search canned text by name and body, optionally scoped to a group. */
+export async function searchCannedText(
+  query: string,
+  groupId?: number,
+): Promise<HaloCannedText[]> {
+  const all = await listCannedText();
+  const scoped = groupId == null ? all : all.filter((c) => c.group_id === groupId);
+  const needle = query.trim().toLowerCase();
+  if (!needle) return scoped.slice(0, 50);
+  return scoped
+    .filter((c) => {
+      const hay = `${c.name ?? ""} ${c.text ?? ""}`.toLowerCase();
+      return hay.includes(needle);
+    })
+    .slice(0, 50);
+}
+
+/** Halo stores canned-text groups in the shared /Lookup table under lookupid=45. */
+let _cannedTextGroupsCache: HaloCannedTextGroup[] | undefined;
+
+export async function listCannedTextGroups(force = false): Promise<HaloCannedTextGroup[]> {
+  if (_cannedTextGroupsCache && !force) return _cannedTextGroupsCache;
+  const q = new URLSearchParams({
+    lookupid: "45",
+    showallcodes: "true",
+    access_control_level: "2",
+  });
+  const res = await call<HaloCannedTextGroup[]>(`/Lookup?${q}`);
+  // valueint1=0 is the Tickets/email type; 1 is Chat. Keep Tickets only — the
+  // Outlook plug-in is composing email, not chat.
+  _cannedTextGroupsCache = (Array.isArray(res) ? res : []).filter(
+    (g) => g.valueint1 == null || g.valueint1 === 0,
+  );
+  return _cannedTextGroupsCache;
+}
+
+export async function createCannedText(
+  payload: CreateCannedTextPayload,
+): Promise<HaloCannedText> {
+  const res = await call<HaloCannedText[]>("/CannedText", {
+    method: "POST",
+    body: JSON.stringify([payload]),
+  });
+  // Invalidate cache so the new entry appears in the next search.
+  _cannedTextCache = undefined;
+  return res[0];
+}
+
+export async function createCannedTextGroup(name: string): Promise<HaloCannedTextGroup> {
+  const res = await call<HaloCannedTextGroup[]>("/Lookup", {
+    method: "POST",
+    body: JSON.stringify([{ lookupid: 45, name, valueint1: 0 }]),
+  });
+  _cannedTextGroupsCache = undefined;
+  return res[0];
 }
 
 /** Free-text KB article search — used by the compose surface to insert article snippets. */
