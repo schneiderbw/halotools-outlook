@@ -34,7 +34,7 @@ import {
 } from "../lib/halo-api";
 import { signOut } from "../lib/auth";
 import { clearConfig, getConfig } from "../lib/config";
-import { domainOf, type EmailContext } from "../lib/office";
+import { domainOf, openExternalUrl, type EmailContext } from "../lib/office";
 import type { HaloUser, HaloClient, HaloTicket } from "../types/halo";
 
 interface Props {
@@ -330,13 +330,11 @@ function QuickHaloLinks({
   if (!haloUrl) return null;
   const open = (path: string) => {
     const url = `${haloUrl}${path}`;
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (!w) {
-      try {
-        Office.context.ui.openBrowserWindow(url);
-      } catch {
-        window.location.href = url;
-      }
+    if (!openExternalUrl(url)) {
+      // Outlook blocked both popup methods — copy the URL so the agent can
+      // paste it themselves. Never navigate the task pane to the target; sites
+      // that set X-Frame-Options will refuse to render and the pane goes blank.
+      navigator.clipboard?.writeText(url).catch(() => {});
     }
   };
   const hasAny = !!contact || !!client;

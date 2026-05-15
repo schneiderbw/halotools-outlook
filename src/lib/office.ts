@@ -297,6 +297,36 @@ export function insertIntoBody(html: string): Promise<void> {
   });
 }
 
+/**
+ * Open an external URL in a real browser window. Tries Outlook's
+ * openBrowserWindow first (the supported way out of a task pane), then a
+ * regular window.open. Returns true on success.
+ *
+ * Crucially, NEVER navigates the task pane itself — if both methods fail
+ * (popup blocked, API unavailable), we return false and the caller decides
+ * how to surface that (toast, copyable link, etc.). Replacing the task pane's
+ * URL with the target turns the pane into an iframe of the destination, which
+ * sites that set X-Frame-Options refuse to render — what users actually see
+ * is the dreaded blocked-content "no" icon.
+ */
+export function openExternalUrl(url: string): boolean {
+  try {
+    if (Office.context?.ui?.openBrowserWindow) {
+      Office.context.ui.openBrowserWindow(url);
+      return true;
+    }
+  } catch {
+    /* fall through to window.open */
+  }
+  try {
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (w) return true;
+  } catch {
+    /* popup blocked or sandboxed */
+  }
+  return false;
+}
+
 /** Save the in-progress compose draft and return its server-side itemId. */
 export function saveDraft(): Promise<string> {
   if (!isComposeItem()) {

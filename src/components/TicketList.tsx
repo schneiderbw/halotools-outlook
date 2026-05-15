@@ -43,7 +43,7 @@ import {
   updateTicket,
   appendAction,
 } from "../lib/halo-api";
-import { getCurrentUserEmail } from "../lib/office";
+import { getCurrentUserEmail, openExternalUrl } from "../lib/office";
 import { getDefaults } from "../lib/defaults";
 
 const useStyles = makeStyles({
@@ -198,13 +198,10 @@ export function TicketList({ label, tickets, onTicketUpdated }: Props) {
     // Halo's deep-link path for a single ticket. Add &action_id=N to jump to a
     // specific action within the ticket.
     const url = `${haloUrl}/ticket?id=${ticketId}`;
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (!w) {
-      try {
-        Office.context.ui.openBrowserWindow(url);
-      } catch {
-        window.location.href = url;
-      }
+    if (!openExternalUrl(url)) {
+      // Both Outlook's API and window.open were blocked. Drop the URL in the
+      // clipboard so the user can paste it manually.
+      navigator.clipboard?.writeText(url).catch(() => {});
     }
   };
 
