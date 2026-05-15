@@ -20,6 +20,12 @@ import {
   clearReferenceCache,
 } from "@iusehalo/halo-api";
 import type { HaloTicketType } from "@iusehalo/halo-api";
+import {
+  getEvents,
+  clearEvents,
+  downloadEvents,
+  type LogEntry,
+} from "../lib/diagnostics";
 
 const useStyles = makeStyles({
   root: {
@@ -62,6 +68,37 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "8px",
   },
+  diagButtons: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "6px",
+    marginTop: "8px",
+  },
+  diagList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    maxHeight: "220px",
+    overflowY: "auto",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    padding: "8px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    fontFamily: "Consolas, ui-monospace, monospace",
+    fontSize: "11px",
+  },
+  diagRow: {
+    display: "grid",
+    gridTemplateColumns: "auto auto 1fr",
+    gap: "6px",
+    alignItems: "baseline",
+  },
+  diagRowError: {
+    color: tokens.colorPaletteRedForeground1,
+  },
+  diagRowWarn: {
+    color: tokens.colorPaletteDarkOrangeForeground1,
+  },
 });
 
 interface Props {
@@ -86,6 +123,8 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState<LogEntry[]>(() => getEvents());
+  const [copyStatus, setCopyStatus] = useState<string | undefined>();
 
   useEffect(() => {
     listTicketTypes()
@@ -95,6 +134,21 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const refreshEvents = () => setEvents(getEvents());
+  const handleCopyEvents = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(events, null, 2));
+      setCopyStatus("Copied to clipboard");
+    } catch {
+      setCopyStatus("Copy failed — use Download instead");
+    }
+    setTimeout(() => setCopyStatus(undefined), 2500);
+  };
+  const handleClearEvents = async () => {
+    await clearEvents();
+    setEvents([]);
+  };
 
   const save = async () => {
     setSaving(true);
@@ -205,6 +259,72 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
         >
           Refresh reference data
         </Button>
+
+        <Divider />
+
+        <div>
+          <Text className={styles.sectionLabel}>Diagnostics</Text>
+          <Text block className={styles.meta}>
+            Recent events written by every runtime (task pane, compose, on-send).
+            Useful when something fails in a runtime whose console isn't reachable
+            from devtools. {events.length} entries captured.
+          </Text>
+          {events.length > 0 && (
+            <div className={styles.diagList}>
+              {events.slice(-25).reverse().map((e, i) => (
+                <div
+                  key={`${e.ts}-${i}`}
+                  className={`${styles.diagRow} ${
+                    e.level === "error"
+                      ? styles.diagRowError
+                      : e.level === "warn"
+                        ? styles.diagRowWarn
+                        : ""
+                  }`}
+                  title={e.data ? JSON.stringify(e.data) : e.ts}
+                >
+                  <span>{new Date(e.ts).toLocaleTimeString()}</span>
+                  <span>[{e.source}]</span>
+                  <span style={{ wordBreak: "break-word" }}>{e.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className={styles.diagButtons}>
+            <Button appearance="subtle" size="small" onClick={refreshEvents}>
+              Refresh
+            </Button>
+            <Button
+              appearance="subtle"
+              size="small"
+              onClick={handleCopyEvents}
+              disabled={events.length === 0}
+            >
+              Copy
+            </Button>
+            <Button
+              appearance="subtle"
+              size="small"
+              onClick={downloadEvents}
+              disabled={events.length === 0}
+            >
+              Download
+            </Button>
+            <Button
+              appearance="subtle"
+              size="small"
+              onClick={handleClearEvents}
+              disabled={events.length === 0}
+            >
+              Clear
+            </Button>
+          </div>
+          {copyStatus && (
+            <Text block className={styles.meta}>
+              {copyStatus}
+            </Text>
+          )}
+        </div>
 
         <Divider />
 
