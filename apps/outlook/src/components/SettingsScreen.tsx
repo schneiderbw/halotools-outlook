@@ -12,7 +12,7 @@ import {
   Spinner,
 } from "@fluentui/react-components";
 import { ArrowLeft24Regular } from "@fluentui/react-icons";
-import { getConfig, storage } from "@iusehalo/halo-api";
+import { getConfig } from "@iusehalo/halo-api";
 import { getDefaults, setDefaults } from "../lib/defaults";
 import {
   listTicketTypes,
@@ -20,21 +20,12 @@ import {
   clearReferenceCache,
 } from "@iusehalo/halo-api";
 import type { HaloTicketType } from "@iusehalo/halo-api";
-
-// Mirror of the diagnostic record the launch-event runtime writes after each
-// on-send attempt. See apps/outlook/public/launchevent.js.
-interface OnSendDiagnostic {
-  startedAt?: string;
-  updatedAt?: string;
-  stage?: string;
-  msSinceStart?: number;
-  result?: "pending" | "ok" | "error";
-  finalStage?: string;
-  finalError?: string | null;
-  durationMs?: number;
-  ticketId?: number | null;
-}
-const ON_SEND_DIAG_KEY = "halo.lastOnSendDiagnostic.v1";
+import {
+  getEvents,
+  clearEvents,
+  downloadEvents,
+  type LogEntry,
+} from "../lib/diagnostics";
 
 const useStyles = makeStyles({
   root: {
@@ -77,6 +68,37 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "8px",
   },
+  diagButtons: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "6px",
+    marginTop: "8px",
+  },
+  diagList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    maxHeight: "220px",
+    overflowY: "auto",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    padding: "8px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    fontFamily: "Consolas, ui-monospace, monospace",
+    fontSize: "11px",
+  },
+  diagRow: {
+    display: "grid",
+    gridTemplateColumns: "auto auto 1fr",
+    gap: "6px",
+    alignItems: "baseline",
+  },
+  diagRowError: {
+    color: tokens.colorPaletteRedForeground1,
+  },
+  diagRowWarn: {
+    color: tokens.colorPaletteDarkOrangeForeground1,
+  },
 });
 
 interface Props {
@@ -101,13 +123,8 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [diag, setDiag] = useState<OnSendDiagnostic | undefined>(() => {
-    try {
-      return storage().get<OnSendDiagnostic>(ON_SEND_DIAG_KEY);
-    } catch {
-      return undefined;
-    }
-  });
+  const [events, setEvents] = useState<LogEntry[]>(() => getEvents());
+  const [copyStatus, setCopyStatus] = useState<string | undefined>();
 
   useEffect(() => {
     listTicketTypes()
@@ -118,12 +135,19 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
       .finally(() => setLoading(false));
   }, []);
 
-  const refreshDiag = () => {
+  const refreshEvents = () => setEvents(getEvents());
+  const handleCopyEvents = async () => {
     try {
-      setDiag(storage().get<OnSendDiagnostic>(ON_SEND_DIAG_KEY));
+      await navigator.clipboard.writeText(JSON.stringify(events, null, 2));
+      setCopyStatus("Copied to clipboard");
     } catch {
-      setDiag(undefined);
+      setCopyStatus("Copy failed — use Download instead");
     }
+    setTimeout(() => setCopyStatus(undefined), 2500);
+  };
+  const handleClearEvents = async () => {
+    await clearEvents();
+    setEvents([]);
   };
 
   const save = async () => {
@@ -239,34 +263,67 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
         <Divider />
 
         <div>
-          <Text className={styles.sectionLabel}>Last on-send attempt</Text>
-          {diag ? (
-            <>
-              <Text block className={styles.meta}>
-                {diag.startedAt ? new Date(diag.startedAt).toLocaleString() : "—"}
-              </Text>
-              <Text block className={styles.meta}>
-                Result: <strong>{diag.result ?? "—"}</strong>
-                {typeof diag.durationMs === "number" ? ` · ${diag.durationMs}ms` : ""}
-                {diag.ticketId ? ` · ticket #${diag.ticketId}` : ""}
-              </Text>
-              <Text block className={styles.meta}>
-                Stage: {diag.finalStage ?? diag.stage ?? "—"}
-              </Text>
-              {diag.finalError && (
-                <Text block className={styles.meta} style={{ wordBreak: "break-word" }}>
-                  Error: {diag.finalError}
-                </Text>
-              )}
-            </>
-          ) : (
+          <Text className={styles.sectionLabel}>Diagnostics</Text>
+          <Text block className={styles.meta}>
+            Recent events written by every runtime (task pane, compose, on-send).
+            Useful when something fails in a runtime whose console isn't reachable
+            from devtools. {events.length} entries captured.
+          </Text>
+          {events.length > 0 && (
+            <div className={styles.diagList}>
+              {events.slice(-25).reverse().map((e, i) => (
+                <div
+                  key={`${e.ts}-${i}`}
+                  className={`${styles.diagRow} ${
+                    e.level === "error"
+                      ? styles.diagRowError
+                      : e.level === "warn"
+                        ? styles.diagRowWarn
+                        : ""
+                  }`}
+                  title={e.data ? JSON.stringify(e.data) : e.ts}
+                >
+                  <span>{new Date(e.ts).toLocaleTimeString()}</span>
+                  <span>[{e.source}]</span>
+                  <span style={{ wordBreak: "break-word" }}>{e.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className={styles.diagButtons}>
+            <Button appearance="subtle" size="small" onClick={refreshEvents}>
+              Refresh
+            </Button>
+            <Button
+              appearance="subtle"
+              size="small"
+              onClick={handleCopyEvents}
+              disabled={events.length === 0}
+            >
+              Copy
+            </Button>
+            <Button
+              appearance="subtle"
+              size="small"
+              onClick={downloadEvents}
+              disabled={events.length === 0}
+            >
+              Download
+            </Button>
+            <Button
+              appearance="subtle"
+              size="small"
+              onClick={handleClearEvents}
+              disabled={events.length === 0}
+            >
+              Clear
+            </Button>
+          </div>
+          {copyStatus && (
             <Text block className={styles.meta}>
-              No record yet. Send a draft with "Log to ticket" armed to capture one.
+              {copyStatus}
             </Text>
           )}
-          <Button appearance="subtle" size="small" onClick={refreshDiag}>
-            Refresh
-          </Button>
         </div>
 
         <Divider />
