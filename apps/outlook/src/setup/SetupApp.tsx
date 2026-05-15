@@ -343,6 +343,10 @@ export function SetupApp() {
   // Pulled out of an uploaded zip so we can bump the patch on the regenerated
   // manifest — M365 admin's Update flow rejects same-or-lower versions.
   const [existingVersion, setExistingVersion] = useState<string | undefined>();
+  // The version stamped into the most recently generated package. Shown on
+  // the done page so admins can verify exactly what they're about to upload
+  // matches the version their tenant will see in M365 admin.
+  const [generatedVersion, setGeneratedVersion] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [building, setBuilding] = useState(false);
 
@@ -399,17 +403,21 @@ export function SetupApp() {
     setBuilding(true);
     try {
       const template = await fetchTemplate(MANIFEST_TEMPLATE_URL);
-      const zip = await buildPackageZip(template, {
+      const result = await buildPackageZip(template, {
         haloBaseUrl: normalizedHalo,
         clientId: clientId.trim(),
         existingAppId,
         existingVersion,
       });
       const slug = new URL(normalizedHalo).hostname.replace(/\./g, "-");
-      const filename = existingAppId
-        ? `halo-outlook-${slug}-update.zip`
-        : `halo-outlook-${slug}.zip`;
-      downloadBlob(zip, filename);
+      // Filename carries the version so an admin who saves multiple
+      // generated packages can tell at a glance which one is which without
+      // unzipping each. Update vs fresh prefix stays so the file's intent
+      // is also clear from the filename alone.
+      const prefix = existingAppId ? "halo-outlook-update" : "halo-outlook";
+      const filename = `${prefix}-${slug}-v${result.version}.zip`;
+      downloadBlob(result.blob, filename);
+      setGeneratedVersion(result.version);
       setStep("done");
     } catch (e) {
       setError((e as Error).message);
@@ -650,10 +658,19 @@ export function SetupApp() {
               <MessageBarBody>
                 <MessageBarTitle>
                   {existingAppId ? "Update package ready" : "Package ready"}
+                  {generatedVersion ? ` — version ${generatedVersion}` : null}
                 </MessageBarTitle>
                 {existingAppId
                   ? "Upload it to Microsoft 365 — M365 will replace the existing deployment because the app ID matches."
                   : "Now upload it to Microsoft 365."}
+                {existingVersion && generatedVersion ? (
+                  <Body1 block style={{ marginTop: 6 }}>
+                    Bumped from <strong>{existingVersion}</strong> →{" "}
+                    <strong>{generatedVersion}</strong>. Microsoft 365 admin
+                    requires the new version to be strictly greater than what's
+                    deployed; this satisfies that.
+                  </Body1>
+                ) : null}
               </MessageBarBody>
             </MessageBar>
             <MessageBar intent="warning">
