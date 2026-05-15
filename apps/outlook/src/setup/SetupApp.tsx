@@ -23,6 +23,7 @@ import {
   Sparkle24Regular,
   ArrowSync24Regular,
   ArrowLeft24Regular,
+  ArrowUpload24Regular,
 } from "@fluentui/react-icons";
 import {
   buildPackageZip,
@@ -742,6 +743,7 @@ function ExistingPackageUpload({
   const inputRef = useRef<HTMLInputElement>(null);
   const [pastedId, setPastedId] = useState("");
   const [pasteError, setPasteError] = useState<string | undefined>();
+  const [dragOver, setDragOver] = useState(false);
   const guidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   const submitId = () => {
@@ -762,22 +764,57 @@ function ExistingPackageUpload({
         borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
         display: "flex",
         flexDirection: "column",
-        gap: 8,
+        gap: 12,
       }}
     >
       <Body1 style={{ color: tokens.colorNeutralForeground3 }}>
-        Updating an existing deployment? Either upload your current package or
-        paste the app ID — M365 will treat the result as an update instead of a
-        new install.
+        Updating an existing deployment? Drop the .zip you generated last time —
+        we'll read the app ID, Halo URL, and Client ID out of it and skip you
+        straight to the download.
       </Body1>
-      <div>
-        <Button
-          appearance="subtle"
-          size="small"
-          onClick={() => inputRef.current?.click()}
-        >
-          Upload existing package…
-        </Button>
+      {/* Primary path: upload existing package. A bordered drop-zone with an
+          icon makes this visually obvious; the previous subtle text button was
+          easily missed. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!dragOver) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) onPick(file);
+        }}
+        style={{
+          border: `2px dashed ${dragOver ? tokens.colorBrandStroke1 : tokens.colorNeutralStroke1}`,
+          borderRadius: tokens.borderRadiusMedium,
+          padding: "20px 16px",
+          textAlign: "center",
+          cursor: "pointer",
+          background: dragOver ? tokens.colorBrandBackground2 : tokens.colorNeutralBackground2,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 6,
+          transition: "background 120ms, border-color 120ms",
+        }}
+      >
+        <ArrowUpload24Regular style={{ color: tokens.colorBrandForeground1 }} />
+        <Body1Strong>Upload existing package</Body1Strong>
+        <Body1 style={{ color: tokens.colorNeutralForeground3, fontSize: 12 }}>
+          Drop a .zip or manifest.json here, or click to browse.
+        </Body1>
         <input
           ref={inputRef}
           type="file"
@@ -791,8 +828,24 @@ function ExistingPackageUpload({
           }}
         />
       </div>
+      {/* Fallback path: paste the app ID. Visually demoted with a small "or"
+          divider so admins reach for the upload first when they have the .zip. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginTop: 4,
+          color: tokens.colorNeutralForeground3,
+        }}
+      >
+        <div style={{ flex: 1, height: 1, background: tokens.colorNeutralStroke2 }} />
+        <Body1 style={{ color: tokens.colorNeutralForeground3, fontSize: 12 }}>
+          or paste the app ID
+        </Body1>
+        <div style={{ flex: 1, height: 1, background: tokens.colorNeutralStroke2 }} />
+      </div>
       <Field
-        label="Or paste the app ID from M365 admin"
         hint="Microsoft 365 admin → Integrated apps → Halo → app details. It's a GUID."
         validationState={pasteError ? "error" : undefined}
         validationMessage={pasteError}
