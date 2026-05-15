@@ -286,6 +286,26 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
             Useful when something fails in a runtime whose console isn't reachable
             from devtools. {events.length} entries captured.
           </Text>
+          {/* Raw on-send entry tracer. Written by launchevent.js directly via
+              localStorage.setItem as the FIRST statement of the handler, before
+              any closure-captured helper is touched. If this shows a timestamp
+              but the diagnostic log doesn't have a "handler entered" entry, the
+              shared logEvent path is broken in the on-send runtime context. If
+              it shows "—" after a send attempt, the handler genuinely never
+              ran — narrowing the issue to Office.js dispatch, not our code. */}
+          <Text block className={styles.meta} style={{ marginTop: 4 }}>
+            On-send handler last entered:{" "}
+            <code>
+              {(() => {
+                try {
+                  const ts = window.localStorage.getItem("halo.onSendEntry.v1");
+                  return ts ? new Date(ts).toLocaleTimeString() : "—";
+                } catch {
+                  return "—";
+                }
+              })()}
+            </code>
+          </Text>
           {events.length > 0 && (
             <div className={styles.diagList}>
               {events.slice(-25).reverse().map((e, i) => (

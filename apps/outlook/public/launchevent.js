@@ -234,11 +234,21 @@
   }
 
   function onMessageSendHandler(event) {
+    // Absolute-first tracer: write a raw localStorage key the moment the
+    // handler is entered, BEFORE any closure-captured helper is touched.
+    // If diagnostics shows "handler entered" via logEvent but this key is
+    // missing, the issue is between dispatch and our entry. If this key
+    // is set but "handler entered" never logs, logEvent itself is broken
+    // in the dispatch context.
+    try {
+      window.localStorage.setItem("halo.onSendEntry.v1", new Date().toISOString());
+    } catch (e) { /* swallow */ }
+
     var startedAt = Date.now();
     var completed = false;
     var stage = "init";
 
-    logEvent("info", "handler invoked");
+    logEvent("info", "handler entered");
 
     var finish = function (errorMessage) {
       if (completed) return;
@@ -309,6 +319,15 @@
   // racing dispatch finds no handler and silently drops the event.
   // Office.actions is part of office.js and becomes available as soon as the
   // script tag finishes — earlier than Office.onReady fires.
+  //
+  // Also expose the handler at window scope. Office.js's dispatch path
+  // is documented to look up the action via the associate map, but some
+  // older / mobile / new-Outlook builds also fall back to a global lookup
+  // by name. The IIFE hides the function from that path; this re-exposes
+  // it without giving up the closure for our helpers.
+  if (typeof window !== "undefined") {
+    window.onMessageSendHandler = onMessageSendHandler;
+  }
   if (typeof Office !== "undefined" && Office.actions && typeof Office.actions.associate === "function") {
     Office.actions.associate("onMessageSendHandler", onMessageSendHandler);
     logEvent("info", "handler registered via Office.actions.associate");
