@@ -27,12 +27,14 @@
   var MAX_BYTES = 16000;
 
   // Outer safety: must fire BEFORE Outlook's own "taking longer than expected"
-  // prompt (~10s on Outlook on the web) so our errorMessage hits the send
-  // dialog instead of being upstaged by Outlook's generic timeout UI.
-  var SAFETY_MS = 8000;
+  // prompt — which the office-js issue tracker confirms appears at 5 seconds
+  // on Outlook on the web (issue #3180). Anything ≥5s means the user sees
+  // Outlook's generic dialog instead of our diagnostic errorMessage.
+  var SAFETY_MS = 4000;
   // Per-fetch budget — token refresh and Action POST. AbortController turns a
-  // hung CORS preflight into a real catchable error.
-  var FETCH_TIMEOUT_MS = 5000;
+  // hung CORS preflight into a real catchable error. Kept under SAFETY_MS so
+  // a network failure surfaces through our .catch path, not the outer safety.
+  var FETCH_TIMEOUT_MS = 3000;
 
   function getRoaming() {
     try { return Office.context.roamingSettings; } catch (e) { return null; }
@@ -241,8 +243,20 @@
         errorMessage ? ("finished with error in '" + stage + "': " + errorMessage)
                      : ("finished ok in '" + stage + "'"),
         { stage: stage, durationMs: Date.now() - startedAt });
-      try { event.completed(opts); } catch (e) {
-        logEvent("error", "event.completed threw: " + (e && e.message ? e.message : String(e)));
+      // Explicitly flush the diagnostic log to roamingSettings BEFORE releasing
+      // the send. Outlook terminates this runtime as soon as event.completed()
+      // returns, which can cut off the fire-and-forget saveAsync inside
+      // logEvent and lose the final (most informative) entry.
+      var rs = getRoaming();
+      var release = function () {
+        try { event.completed(opts); } catch (e) {
+          // Can't logEvent here — runtime is already winding down.
+        }
+      };
+      if (rs && typeof rs.saveAsync === "function") {
+        try { rs.saveAsync(release); } catch (e) { release(); }
+      } else {
+        release();
       }
     };
 
