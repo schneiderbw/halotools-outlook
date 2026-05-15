@@ -3,36 +3,40 @@
 //
 // Registered as `onMessageSendHandler` in the manifest's runtimes.actions and
 // hooked to autoRunEvents[].messageSending. Lives in its own short-lived
-// runtime, so it cannot share JS state with the compose task pane — only the
-// per-item CustomProperties bag and the per-mailbox roamingSettings bag are
-// shared.
+// runtime served from the same origin (tools.iusehalo.com) as the task pane.
 //
 // Contract:
 // - Outlook calls onMessageSendHandler(event) the moment the user clicks Send.
 // - We have ~5 minutes to call event.completed() or the send is cancelled.
 // - We always allow the send to proceed; Halo append failure is non-fatal.
 //
-// Diagnostics: every stage appends to the shared roamingSettings log
-// ("halo.diagLog.v1") which the task pane's Settings → Diagnostics panel
-// renders and exports. Must stay in lock-step with the TS implementation
-// in apps/outlook/src/lib/diagnostics.ts (same key, same entry shape).
+// Diagnostics: every stage appends to a localStorage log ("halo.diagLog.v1")
+// which the task pane's Settings → Diagnostics panel reads and polls. We use
+// localStorage (not roamingSettings) because roamingSettings is loaded once
+// per runtime and never refreshed — so the task pane couldn't see entries
+// the launch-event runtime wrote after the task pane opened. localStorage
+// is synchronous and shared across all same-origin runtimes.
+// Stays in lock-step with apps/outlook/src/lib/diagnostics.ts (same key,
+// same entry shape).
 
 (function () {
   var TOKENS_KEY = "halo.tokens.v1";
   var CONFIG_KEY = "halo.tenantConfig.v1";
   var TICKET_PROP = "haloLogTicketId";
   var DIAG_LOG_KEY = "halo.diagLog.v1";
-  var MAX_ENTRIES = 100;
+  var MAX_ENTRIES = 200;
   var MAX_MESSAGE_LEN = 500;
-  var MAX_BYTES = 16000;
+  var MAX_BYTES = 64000;
 
   // Outer safety: must fire BEFORE Outlook's own "taking longer than expected"
-  // prompt (~10s on Outlook on the web) so our errorMessage hits the send
-  // dialog instead of being upstaged by Outlook's generic timeout UI.
-  var SAFETY_MS = 8000;
+  // prompt — which the office-js issue tracker confirms appears at 5 seconds
+  // on Outlook on the web (issue #3180). Anything ≥5s means the user sees
+  // Outlook's generic dialog instead of our diagnostic errorMessage.
+  var SAFETY_MS = 4000;
   // Per-fetch budget — token refresh and Action POST. AbortController turns a
-  // hung CORS preflight into a real catchable error.
-  var FETCH_TIMEOUT_MS = 5000;
+  // hung CORS preflight into a real catchable error. Kept under SAFETY_MS so
+  // a network failure surfaces through our .catch path, not the outer safety.
+  var FETCH_TIMEOUT_MS = 3000;
 
   function getRoaming() {
     try { return Office.context.roamingSettings; } catch (e) { return null; }
@@ -48,14 +52,14 @@
     return rs ? rs.get(CONFIG_KEY) : undefined;
   }
 
-  // Append a diagnostic entry to the shared cross-runtime log. Stays in
-  // lock-step with apps/outlook/src/lib/diagnostics.ts.
+  // Append a diagnostic entry to the shared cross-runtime log. Synchronous —
+  // no fire-and-forget races, so even an entry written immediately before
+  // event.completed() is durable.
   function logEvent(level, message, data) {
     try {
-      var rs = getRoaming();
-      if (!rs) return;
-      var raw = rs.get(DIAG_LOG_KEY);
-      var arr = Array.isArray(raw) ? raw : [];
+      var raw = window.localStorage.getItem(DIAG_LOG_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) arr = [];
       var entry = {
         ts: new Date().toISOString(),
         level: level,
@@ -70,15 +74,19 @@
       while (arr.length > 1 && JSON.stringify(arr).length > MAX_BYTES) {
         arr = arr.slice(1);
       }
-      rs.set(DIAG_LOG_KEY, arr);
-      rs.saveAsync(function () {});
+      window.localStorage.setItem(DIAG_LOG_KEY, JSON.stringify(arr));
     } catch (e) {
       // Logging must never throw into the handler path.
     }
-    // Mirror to console for the developer-tools window if it happens to be open
-    // on this runtime — usually not, but cheap to include.
+    // Mirror to console for the dev-tools window if it happens to be open.
     try { console.log("[halo-on-send]", level, message, data || ""); } catch (e) {}
   }
+
+  // Module-load breadcrumb. If the diagnostics panel never shows this entry
+  // after a send attempt, the launch-event runtime itself didn't load — that
+  // narrows the problem to manifest registration / Outlook activation rules
+  // rather than anything inside the handler.
+  logEvent("info", "launchevent.js module loaded");
 
   // Wrap fetch with an AbortController-driven timeout. Rejects with a tagged
   // error if the request runs longer than ms — covers hung CORS preflights.
@@ -241,9 +249,9 @@
         errorMessage ? ("finished with error in '" + stage + "': " + errorMessage)
                      : ("finished ok in '" + stage + "'"),
         { stage: stage, durationMs: Date.now() - startedAt });
-      try { event.completed(opts); } catch (e) {
-        logEvent("error", "event.completed threw: " + (e && e.message ? e.message : String(e)));
-      }
+      // logEvent writes synchronously to localStorage, so the entry above is
+      // durable before event.completed() terminates the runtime.
+      try { event.completed(opts); } catch (e) {}
     };
 
     // Outer safety. If we get here, something below didn't propagate.

@@ -1,14 +1,16 @@
 // Cross-runtime diagnostic log.
 //
-// All Outlook runtimes in this add-in share Office.context.roamingSettings,
-// so we use it as a ring-buffered append-only log: the launch-event handler
-// can write entries even though its console isn't reachable from the task
-// pane, and the Settings screen reads them back for inspection / download.
+// All Outlook runtimes in this add-in are served from the same origin
+// (tools.iusehalo.com) so they share window.localStorage. We deliberately use
+// localStorage instead of Office.context.roamingSettings here because the
+// roamingSettings bag is loaded ONCE when each runtime starts and never
+// auto-refreshes — meaning the task pane reads its own stale in-memory copy
+// and can't see writes that the launch-event runtime made after the task pane
+// opened. localStorage is synchronous, immediate, and visible across runtimes
+// at the same origin.
 //
 // The launch-event runtime has a parallel ES5 implementation in
 // public/launchevent.js — they MUST agree on the storage key and entry shape.
-
-import { storage } from "@iusehalo/halo-api";
 
 export type LogLevel = "info" | "warn" | "error";
 
@@ -25,25 +27,33 @@ export interface LogEntry {
 }
 
 export const DIAG_LOG_KEY = "halo.diagLog.v1";
-const MAX_ENTRIES = 100;
+const MAX_ENTRIES = 200;
 const MAX_MESSAGE_LEN = 500;
-// roamingSettings has a ~32 KB total cap shared with tokens/config/defaults.
-// Keep the log well under that so we never blow out persistence on a write.
-const MAX_BYTES = 16_000;
+// localStorage has a 5 MB cap per origin — we're nowhere near that, but the
+// log isn't worth scaling without bound. Cap at ~64 KB.
+const MAX_BYTES = 64_000;
 
 function read(): LogEntry[] {
   try {
-    const raw = storage().get<LogEntry[]>(DIAG_LOG_KEY);
-    return Array.isArray(raw) ? raw : [];
+    const raw = window.localStorage.getItem(DIAG_LOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
+function write(entries: LogEntry[]): void {
+  try {
+    window.localStorage.setItem(DIAG_LOG_KEY, JSON.stringify(entries));
+  } catch {
+    /* swallow — out-of-quota or private mode */
+  }
+}
+
 function trim(entries: LogEntry[]): LogEntry[] {
   let trimmed = entries.length > MAX_ENTRIES ? entries.slice(-MAX_ENTRIES) : entries;
-  // Drop the oldest entries until we're under the byte budget. Most logs never
-  // hit this — it's the safety net against a single huge data payload.
   while (trimmed.length > 1 && JSON.stringify(trimmed).length > MAX_BYTES) {
     trimmed = trimmed.slice(1);
   }
@@ -64,8 +74,7 @@ export function logEvent(
       message: message.length > MAX_MESSAGE_LEN ? message.slice(0, MAX_MESSAGE_LEN) + "…" : message,
     };
     if (data) entry.data = data;
-    const next = trim([...read(), entry]);
-    void storage().set(DIAG_LOG_KEY, next);
+    write(trim([...read(), entry]));
   } catch {
     // Logging must never throw into caller logic.
   }
@@ -75,9 +84,9 @@ export function getEvents(): LogEntry[] {
   return read();
 }
 
-export async function clearEvents(): Promise<void> {
+export function clearEvents(): void {
   try {
-    await storage().set(DIAG_LOG_KEY, []);
+    window.localStorage.removeItem(DIAG_LOG_KEY);
   } catch {
     /* swallow */
   }

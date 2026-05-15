@@ -27,6 +27,7 @@ import {
   listTicketTypes,
   ticketTypesForAgentCreate,
   ticketDeepLink,
+  searchTickets,
 } from "@iusehalo/halo-api";
 import {
   getBody,
@@ -171,15 +172,58 @@ function AppendDialog({
   const [includeAttachments, setIncludeAttachments] = useState(
     getDefaults().includeAttachmentsByDefault ?? true,
   );
+  const [searchResults, setSearchResults] = useState<HaloTicket[]>([]);
+  const [searching, setSearching] = useState(false);
   const attachmentCount = listAttachments().filter((a) => !a.isInline).length;
 
-  const filteredTickets = (() => {
+  // Server-side search: when the user types, query Halo (debounced) so newly
+  // created tickets are findable even if they didn't exist when the dialog
+  // opened. Cap at 15 hits so the dropdown stays usable.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    // Skip the API call once a selection has been made — at that point the
+    // combobox value is the formatted "#123 · summary" string, not a search.
+    if (selectedId) return;
+    setSearching(true);
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      searchTickets(trimmed, 15)
+        .then((res) => {
+          if (!cancelled) setSearchResults(res);
+        })
+        .catch(() => {
+          if (!cancelled) setSearchResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [query, selectedId]);
+
+  // Merge candidates (thread matches + open tickets for the client) with the
+  // server-side search results, deduping by id and prioritising candidates
+  // first so thread-matched tickets always lead the list.
+  const visibleTickets = (() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tickets;
-    return tickets.filter((t) => {
-      const hay = `#${t.id} ${t.summary ?? ""} ${t.statusname ?? ""}`.toLowerCase();
-      return hay.includes(q);
-    });
+    const base = q
+      ? tickets.filter((t) => {
+          const hay = `#${t.id} ${t.summary ?? ""} ${t.statusname ?? ""}`.toLowerCase();
+          return hay.includes(q);
+        })
+      : tickets;
+    if (!q || searchResults.length === 0) return base.slice(0, 15);
+    const seen = new Set(base.map((t) => t.id));
+    const extras = searchResults.filter((t) => !seen.has(t.id));
+    return [...base, ...extras].slice(0, 15);
   })();
 
   const reset = () => {
@@ -261,7 +305,6 @@ function AppendDialog({
           appearance={appearance}
           icon={<Attach24Regular />}
           className={triggerClass}
-          disabled={tickets.length === 0}
         >
           Append
         </Button>
@@ -287,15 +330,15 @@ function AppendDialog({
                   setQuery(t ? `#${t.id} · ${t.summary}` : "");
                 }}
               >
-                {filteredTickets.map((t) => (
+                {visibleTickets.map((t) => (
                   <Option key={t.id} value={String(t.id)} text={`#${t.id} · ${t.summary}`}>
                     #{t.id} · {t.summary}
                     {t.statusname ? ` · ${t.statusname}` : ""}
                   </Option>
                 ))}
-                {filteredTickets.length === 0 && (
+                {visibleTickets.length === 0 && (
                   <Option value="__none__" disabled>
-                    No tickets match
+                    {searching ? "Searching…" : "No tickets match"}
                   </Option>
                 )}
               </Combobox>
