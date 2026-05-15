@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Signing in…</title>
+    <script>
+      (function () {
+        if (
+          location.protocol === "http:" &&
+          location.hostname !== "localhost" &&
+          location.hostname !== "127.0.0.1"
+        ) {
+          location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+        }
+      })();
+    </script>
+    <!-- teams-js is loaded from a pinned CDN copy so the callback HTML stays standalone
+         (this page is opened in a popup by microsoftTeams.authentication.authenticate()
+         and we don't get to ship a JS bundle through Vite's import graph from here). -->
+    <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
+    <style>
+      html, body { height: 100%; margin: 0; font-family: "Segoe UI", system-ui, sans-serif; }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 12px;
+        background: #faf9f8;
+        color: #323130;
+      }
+      .spinner {
+        width: 28px; height: 28px;
+        border: 3px solid #c7c7c7;
+        border-top-color: #0f6cbd;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      .err {
+        color: #a4262c;
+        max-width: 80%;
+        text-align: center;
+        font-size: 13px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div class="spinner" id="spinner"></div>
+    <div id="status">Finalizing sign-in…</div>
+    <script>
+      // This page runs inside the popup window opened by
+      // microsoftTeams.authentication.authenticate({ url }). Halo redirects here
+      // with ?code=... or ?error=...; we relay that to the parent tab via
+      // notifySuccess/notifyFailure, then Teams closes the popup automatically.
+
+      function notify(payloadOrError, ok) {
+        try {
+          microsoftTeams.app.initialize().then(function () {
+            if (ok) {
+              microsoftTeams.authentication.notifySuccess(JSON.stringify(payloadOrError));
+            } else {
+              microsoftTeams.authentication.notifyFailure(JSON.stringify(payloadOrError));
+            }
+          });
+        } catch (e) {
+          // Fallback for dev outside Teams: postMessage to the opener, which the
+          // tab's auth helper will pick up when it detects we're not inside Teams.
+          if (window.opener) {
+            window.opener.postMessage(
+              { source: "halo-teams-auth", ok: !!ok, payload: payloadOrError },
+              "*",
+            );
+          }
+          document.getElementById("status").textContent =
+            "Sign-in complete. You can close this window.";
+        }
+      }
+
+      var params = new URLSearchParams(window.location.search);
+      var code = params.get("code");
+      var state = params.get("state");
+      var error = params.get("error");
+      var errorDescription = params.get("error_description");
+
+      if (error) {
+        document.getElementById("spinner").style.display = "none";
+        var el = document.getElementById("status");
+        el.className = "err";
+        el.textContent = error + ": " + (errorDescription || "");
+        notify({ error: error, errorDescription: errorDescription }, false);
+      } else if (!code) {
+        document.getElementById("status").textContent = "No authorization code received.";
+        notify({ error: "no_code" }, false);
+      } else {
+        notify({ code: code, state: state }, true);
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "id": "8c1d2f5a-7e4b-4d1f-9a6c-2b3e87f54a90",
+  "version": "0.1.0",
+  "developer": {
+    "name": "Rising Tide Consulting Group",
+    "websiteUrl": "https://iusehalo.com",
+    "privacyUrl": "https://iusehalo.com/privacy",
+    "termsOfUseUrl": "https://iusehalo.com/terms"
+  },
+  "name": {
+    "short": "Halo",
+    "full": "HaloPSA for Microsoft Teams"
+  },
+  "description": {
+    "short": "Surface Halo context and insert ticket links inside Teams.",
+    "full": "Look up HaloPSA contacts, view their open tickets and recent activity, and insert ticket links or canned text directly into Teams chats. Multi-tenant: connect to your own HaloPSA instance."
+  },
+  "icons": {
+    "outline": "assets/icon-32.png",
+    "color": "assets/icon-128.png"
+  },
+  "accentColor": "#0F6CBD",
+  "localizationInfo": {
+    "defaultLanguageTag": "en-US"
+  },
+  "validDomains": [
+    "tools.iusehalo.com"
+  ],
+  "staticTabs": [
+    {
+      "entityId": "halo-tab",
+      "name": "HaloPSA",
+      "contentUrl": "https://tools.iusehalo.com/teams/index.html",
+      "websiteUrl": "https://tools.iusehalo.com/teams/",
+      "scopes": ["personal"]
+    }
+  ],
+  "composeExtensions": [
+    {
+      "botId": "00000000-0000-0000-0000-000000000000",
+      "canUpdateConfiguration": false,
+      "commands": [
+        {
+          "id": "insertTicket",
+          "type": "action",
+          "title": "Insert ticket link",
+          "description": "Search HaloPSA tickets and insert a link or adaptive card.",
+          "initialRun": false,
+          "fetchTask": false,
+          "context": ["compose", "commandBox"],
+          "taskInfo": {
+            "title": "Insert HaloPSA ticket",
+            "width": 480,
+            "height": 600,
+            "url": "https://tools.iusehalo.com/teams/messageExtension.html?mode=ticket"
+          }
+        },
+        {
+          "id": "insertCannedText",
+          "type": "action",
+          "title": "Insert canned text",
+          "description": "Search Halo canned texts and insert one into the chat.",
+          "initialRun": false,
+          "fetchTask": false,
+          "context": ["compose"],
+          "taskInfo": {
+            "title": "Insert canned text",
+            "width": 480,
+            "height": 600,
+            "url": "https://tools.iusehalo.com/teams/messageExtension.html?mode=canned"
+          }
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"]
+}

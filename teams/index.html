@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Halo for Teams</title>
+    <script>
+      // Defence-in-depth HTTPS redirect. Mirrors the Outlook add-in's index.html —
+      // EasyPanel/Cloudflare terminate TLS, but a plain-HTTP request occasionally
+      // slips through; the hostname check keeps localhost dev working.
+      (function () {
+        if (
+          location.protocol === "http:" &&
+          location.hostname !== "localhost" &&
+          location.hostname !== "127.0.0.1"
+        ) {
+          location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+        }
+      })();
+    </script>
+    <style>
+      html, body, #root { height: 100%; margin: 0; padding: 0; }
+      body { font-family: "Segoe UI", system-ui, sans-serif; background: #faf9f8; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
