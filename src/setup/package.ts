@@ -10,11 +10,22 @@ export interface TenantInput {
    * instead of a brand-new install. Leave undefined for first-time setup.
    */
   existingAppId?: string;
+  /**
+   * The existing package's `version` field (e.g. "0.1.0"). M365 admin's
+   * update flow rejects uploads whose version isn't strictly greater than
+   * what's currently deployed, so we bump the patch when we know the prior
+   * value. Leave undefined to use a timestamp-based version (still strictly
+   * greater than `0.1.0`) — that's the paste-ID branch where we don't have
+   * the prior manifest in hand.
+   */
+  existingVersion?: string;
 }
 
 export interface ExtractedManifestFields {
   /** GUID of the existing app — pass back as `existingAppId` to keep updates in place. */
   id: string;
+  /** Existing `version` field, e.g. "0.1.0" — used to bump on the regenerated package. */
+  version?: string;
   /** Pre-filled from the embedded ?halo= query param on the runtime page URL. */
   haloBaseUrl?: string;
   /** Pre-filled from the embedded ?clientId= query param. */
@@ -50,6 +61,7 @@ interface ManifestRibbon {
 
 interface Manifest {
   id: string;
+  version: string;
   name: { short: string; full: string };
   validDomains?: string[];
   icons: { outline: string; color: string };
@@ -62,6 +74,38 @@ interface Manifest {
 
 function hostnameOf(url: string): string {
   return new URL(url).hostname;
+}
+
+/**
+ * Bump the patch component of a semver-ish version (`X.Y.Z` or `X.Y.Z.W`).
+ * M365 admin's Update flow rejects uploads whose version isn't strictly greater
+ * than the currently-deployed one, so we increment here on every regeneration.
+ * Falls back to a timestamp-based version if the input doesn't parse — the
+ * timestamp form is also strictly greater than any reasonable 0.1.x value.
+ */
+function bumpVersion(version: string): string {
+  const parts = version.split(".");
+  if (parts.length < 3 || parts.length > 4) return timestampVersion();
+  const last = Number(parts[parts.length - 1]);
+  if (!Number.isFinite(last)) return timestampVersion();
+  parts[parts.length - 1] = String(last + 1);
+  return parts.join(".");
+}
+
+/**
+ * Monotonically-increasing version of the shape `1.<days-since-2024-01-01>.<minutes-since-midnight-UTC>`.
+ * Used when we're updating a deployment but don't have the prior version
+ * string (paste-ID flow). Major is `1` to ensure we always beat the
+ * template's default of `0.1.0`.
+ */
+function timestampVersion(): string {
+  const epoch = Date.UTC(2024, 0, 1);
+  const now = Date.now();
+  const days = Math.max(1, Math.floor((now - epoch) / 86_400_000));
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const minutes = Math.floor((now - startOfDay.getTime()) / 60_000);
+  return `1.${days}.${minutes}`;
 }
 
 /**
@@ -82,6 +126,18 @@ export function buildManifest(template: Manifest, input: TenantInput): Manifest 
 
   const cloned: Manifest = JSON.parse(JSON.stringify(template));
   cloned.id = input.existingAppId ?? crypto.randomUUID();
+
+  // Version handling — M365 admin rejects update uploads whose version isn't
+  // strictly greater than what's deployed. Three cases:
+  //   1. Updating with an uploaded zip → bump the patch of the prior version.
+  //   2. Updating with just a pasted GUID → use timestamp-based version
+  //      (always > 0.1.x of any reasonable prior deployment).
+  //   3. Fresh install → keep the template's version unchanged.
+  if (input.existingVersion) {
+    cloned.version = bumpVersion(input.existingVersion);
+  } else if (input.existingAppId) {
+    cloned.version = timestampVersion();
+  }
 
   const validDomains = new Set(cloned.validDomains ?? []);
   validDomains.add(haloHost);
@@ -211,5 +267,7 @@ export async function readExistingManifest(file: File): Promise<ExtractedManifes
     }
   }
 
-  return { id: manifest.id, haloBaseUrl, clientId };
+  const version =
+    typeof manifest.version === "string" ? manifest.version : undefined;
+  return { id: manifest.id, version, haloBaseUrl, clientId };
 }

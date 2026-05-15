@@ -339,6 +339,9 @@ export function SetupApp() {
   // app. Populated by readExistingManifest after an admin uploads their
   // current package.
   const [existingAppId, setExistingAppId] = useState<string | undefined>();
+  // Pulled out of an uploaded zip so we can bump the patch on the regenerated
+  // manifest — M365 admin's Update flow rejects same-or-lower versions.
+  const [existingVersion, setExistingVersion] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [building, setBuilding] = useState(false);
 
@@ -366,6 +369,7 @@ export function SetupApp() {
     setHaloUrl("");
     setClientId("");
     setExistingAppId(undefined);
+    setExistingVersion(undefined);
     setError(undefined);
   };
 
@@ -374,6 +378,7 @@ export function SetupApp() {
     try {
       const extracted = await readExistingManifest(file);
       setExistingAppId(extracted.id);
+      if (extracted.version) setExistingVersion(extracted.version);
       if (extracted.haloBaseUrl) setHaloUrl(extracted.haloBaseUrl);
       if (extracted.clientId) setClientId(extracted.clientId);
       // Both fields pulled — jump straight to the final step so the admin
@@ -397,6 +402,7 @@ export function SetupApp() {
         haloBaseUrl: normalizedHalo,
         clientId: clientId.trim(),
         existingAppId,
+        existingVersion,
       });
       const slug = new URL(normalizedHalo).hostname.replace(/\./g, "-");
       const filename = existingAppId
@@ -559,8 +565,15 @@ export function SetupApp() {
         {existingAppId && step !== "halo-url" && step !== "done" && (
           <MessageBar intent="info">
             <MessageBarBody>
-              Update mode — reusing app ID <code>{existingAppId.slice(0, 8)}…</code>.
-              The package you download will replace the existing deployment in M365 admin
+              Update mode — reusing app ID <code>{existingAppId.slice(0, 8)}…</code>
+              {existingVersion ? (
+                <>
+                  {" "}and bumping version from <code>{existingVersion}</code>.
+                </>
+              ) : (
+                <> with a timestamp-based version (you didn't upload the prior zip).</>
+              )}{" "}
+              The package will replace the existing deployment in M365 admin
               instead of installing a new app.
             </MessageBarBody>
           </MessageBar>
