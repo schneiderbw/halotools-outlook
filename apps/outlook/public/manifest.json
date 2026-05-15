@@ -95,7 +95,8 @@
           "actions": [
             {
               "id": "onMessageSendHandler",
-              "type": "executeFunction"
+              "type": "executeFunction",
+              "displayName": "onMessageSendHandler"
             }
           ]
         }
