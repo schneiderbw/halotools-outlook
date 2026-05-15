@@ -655,6 +655,16 @@ export function SetupApp() {
                   : "Now upload it to Microsoft 365."}
               </MessageBarBody>
             </MessageBar>
+            <MessageBar intent="warning">
+              <MessageBarBody>
+                <MessageBarTitle>Keep this zip — you'll need it to publish updates</MessageBarTitle>
+                Microsoft 365's Update flow requires the same app ID on every
+                re-upload. Save the file somewhere you can find it again (a
+                team drive works) so the next time you regenerate, you can
+                drop it into the "Updating an existing deployment" path and
+                we'll keep the ID and bump the version for you.
+              </MessageBarBody>
+            </MessageBar>
             <div className={styles.successBody}>
               <Subtitle2>Next: deploy to your tenant</Subtitle2>
               <ol className={styles.ol}>
