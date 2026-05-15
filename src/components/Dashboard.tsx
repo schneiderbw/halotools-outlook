@@ -18,11 +18,14 @@ import {
   MoreHorizontal24Regular,
   ArrowClockwise24Regular,
   ArrowUpRight16Regular,
+  Note24Regular,
 } from "@fluentui/react-icons";
 import { ContactCard } from "./ContactCard";
 import { TicketList } from "./TicketList";
 import { LogActions } from "./LogActions";
 import { SettingsScreen } from "./SettingsScreen";
+import { ActivityFeed } from "./ActivityFeed";
+import { LogNoteDialog } from "./LogNoteDialog";
 import {
   findUserByEmail,
   findClientByDomain,
@@ -302,6 +305,13 @@ export function Dashboard({ email, onSignedOut }: Props) {
               onTicketUpdated={handleTicketUpdated}
             />
           )}
+
+          {(contact || client) && (
+            <>
+              <Divider />
+              <ActivityFeed contact={contact} client={client} />
+            </>
+          )}
         </div>
       )}
     </div>
@@ -316,6 +326,7 @@ function QuickHaloLinks({
   client?: HaloClient;
 }) {
   const haloUrl = getConfig()?.haloBaseUrl;
+  const [noteOpen, setNoteOpen] = useState(false);
   if (!haloUrl) return null;
   const open = (path: string) => {
     const url = `${haloUrl}${path}`;
@@ -339,6 +350,16 @@ function QuickHaloLinks({
         marginTop: 4,
       }}
     >
+      {(contact || client) && (
+        <Button
+          size="small"
+          appearance="subtle"
+          icon={<Note24Regular />}
+          onClick={() => setNoteOpen(true)}
+        >
+          Log note
+        </Button>
+      )}
       {contact && (
         <Button
           size="small"
@@ -359,6 +380,12 @@ function QuickHaloLinks({
           Open client
         </Button>
       )}
+      <LogNoteDialog
+        open={noteOpen}
+        contact={contact}
+        client={client}
+        onClose={() => setNoteOpen(false)}
+      />
     </div>
   );
 }

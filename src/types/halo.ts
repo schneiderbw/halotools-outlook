@@ -231,6 +231,70 @@ export interface HaloCannedTextGroup {
   sequence?: number;
 }
 
+/**
+ * CRM note attached to a client, site, or user. The same /CRMNote endpoint is
+ * used regardless of scope — caller picks the *_id field to filter / write.
+ */
+export interface HaloCRMNote {
+  id: number;
+  client_id?: number;
+  site_id?: number;
+  user_id?: number;
+  datetime: string;
+  who_agentid?: number;
+  subject?: string;
+  note: string;
+  /** Decimal hours, e.g. 0.0333 = 2 minutes. */
+  timetaken?: number;
+  hide_time_taken?: boolean;
+  satisfaction?: string;
+  add_to_calendar?: boolean;
+  /** Halo auto-creates a ticket from some notes; this is the resulting ticket id. */
+  ticketid?: number;
+}
+
+export interface CreateCRMNotePayload {
+  /** Exactly one of these three scopes should be set. */
+  client_id?: number | string;
+  site_id?: number | string;
+  user_id?: number | string;
+  subject: string;
+  note: string;
+  /** Decimal hours. */
+  timetaken?: number;
+  hide_time_taken?: boolean;
+  add_to_calendar?: boolean;
+}
+
+/**
+ * Activity feed item from /Feed. Aggregates actions, notes, status changes, and
+ * other events across the entities related to the queried scope (client/site/user).
+ */
+export interface HaloFeedItem {
+  id: number;
+  datetime: string;
+  /** Halo's internal type discriminator; varies by tenant. 0 = action in our test tenant. */
+  entitytype: number;
+  agent_id?: number;
+  user_id?: number;
+  note?: string;
+  outcome?: string;
+  /** Display details about the actor who triggered the feed item. */
+  who_name?: string;
+  who_initials?: string;
+  who_imgpath?: string;
+  who_colour?: string;
+  who_type?: number;
+  /** Generic pointers to whatever entity the feed item references. */
+  content_id1?: number;
+  content_id2?: number;
+}
+
+export interface HaloFeedResponse {
+  record_count: number;
+  feed: HaloFeedItem[];
+}
+
 export interface CreateCannedTextPayload {
   name: string;
   text: string;

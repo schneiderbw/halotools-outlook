@@ -12,11 +12,15 @@ import type {
   HaloKbArticle,
   HaloCannedText,
   HaloCannedTextGroup,
+  HaloCRMNote,
+  HaloFeedItem,
+  HaloFeedResponse,
   HaloPriority,
   CreateTicketPayload,
   CreateActionPayload,
   CreateContactPayload,
   CreateCannedTextPayload,
+  CreateCRMNotePayload,
   UpdateTicketPayload,
 } from "../types/halo";
 
@@ -471,6 +475,62 @@ export function ticketDeepLink(ticketId: number, actionId?: number): string | un
   if (!halo) return undefined;
   const base = `${halo}/ticket?id=${ticketId}`;
   return actionId ? `${base}&action_id=${actionId}` : base;
+}
+
+// ---------- CRM notes (client/site/user-scoped activity) ----------
+
+export interface CRMScope {
+  /** Exactly one of these three should be set; whichever Halo entity the note belongs to. */
+  client_id?: number;
+  site_id?: number;
+  user_id?: number;
+}
+
+function scopeToQuery(scope: CRMScope): URLSearchParams {
+  const q = new URLSearchParams();
+  if (scope.client_id) q.set("client_id", String(scope.client_id));
+  if (scope.site_id) q.set("site_id", String(scope.site_id));
+  if (scope.user_id) q.set("user_id", String(scope.user_id));
+  return q;
+}
+
+export async function listCRMNotes(scope: CRMScope, count = 15): Promise<HaloCRMNote[]> {
+  const q = scopeToQuery(scope);
+  q.set("count", String(count));
+  q.set("includehtmlnote", "true");
+  q.set("includeattachments", "true");
+  q.set("importanttop", "false");
+  q.set("includereactions", "true");
+  const res = await call<{ actions?: HaloCRMNote[] } | HaloCRMNote[]>(`/CRMNote?${q}`);
+  return Array.isArray(res) ? res : res.actions ?? [];
+}
+
+export async function createCRMNote(payload: CreateCRMNotePayload): Promise<HaloCRMNote> {
+  const res = await call<{ actions?: HaloCRMNote[] } | HaloCRMNote[]>("/CRMNote", {
+    method: "POST",
+    body: JSON.stringify([payload]),
+  });
+  const arr = Array.isArray(res) ? res : res.actions ?? [];
+  return arr[0];
+}
+
+// ---------- Activity feed (cross-entity timeline) ----------
+
+/**
+ * Fetch the Halo activity feed for a client/site/user. The feed merges actions,
+ * notes, status changes, and similar events across all entities related to the
+ * scope — what you see on a Halo CRM overview page.
+ *
+ * The query keys are `related_*_id` rather than the bare `*_id` used elsewhere.
+ */
+export async function listFeed(scope: CRMScope, count = 20): Promise<HaloFeedItem[]> {
+  const q = new URLSearchParams({ count: String(count) });
+  if (scope.client_id) q.set("related_client_id", String(scope.client_id));
+  if (scope.site_id) q.set("related_site_id", String(scope.site_id));
+  if (scope.user_id) q.set("related_user_id", String(scope.user_id));
+  const res = await call<HaloFeedResponse | HaloFeedItem[]>(`/Feed?${q}`);
+  if (Array.isArray(res)) return res;
+  return res.feed ?? [];
 }
 
 export { HaloApiError };
