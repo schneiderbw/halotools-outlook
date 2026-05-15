@@ -20,18 +20,38 @@
   var TOKENS_KEY = "halo.tokens.v1";
   var CONFIG_KEY = "halo.tenantConfig.v1";
   var TICKET_PROP = "haloLogTicketId";
+  // Persisted breadcrumb so the task pane can render "last on-send" diagnostics
+  // even though the launch event runtime has no UI of its own.
+  var DIAG_KEY = "halo.lastOnSendDiagnostic.v1";
 
-  // Outer safety: if nothing else completes the event, release the send. Kept
-  // short so users don't sit through the full 5-minute Outlook timeout when a
-  // fetch or saveAsync hangs in a runtime quirk.
-  var SAFETY_MS = 12000;
-  // Per-fetch budget for talking to Halo. AbortController turns a hung CORS
-  // preflight (or a slow tenant) into a real catchable error instead of an
-  // open promise that ties up the runtime.
-  var FETCH_TIMEOUT_MS = 8000;
+  // Outer safety: must fire BEFORE Outlook's own "taking longer than expected"
+  // prompt (~10s on Outlook on the web). Keeping it under that ceiling means
+  // our errorMessage shows up in the send dialog instead of being upstaged by
+  // Outlook's generic timeout UI.
+  var SAFETY_MS = 8000;
+  // Per-fetch budget — token refresh and Action POST. AbortController turns a
+  // hung CORS preflight into a real catchable error instead of an open promise
+  // that ties up the runtime.
+  var FETCH_TIMEOUT_MS = 5000;
 
   function log() {
     try { console.log.apply(console, ["[halo-on-send]"].concat([].slice.call(arguments))); } catch (e) {}
+  }
+
+  // Stamp the per-mailbox diagnostic record so the task pane's debug panel
+  // can show "last attempt" details. saveAsync is fire-and-forget — we don't
+  // want a slow save to delay the send.
+  function recordDiag(state) {
+    try {
+      var rs = getRoaming();
+      if (!rs) return;
+      var existing = rs.get(DIAG_KEY) || {};
+      var merged = Object.assign({}, existing, state, { updatedAt: new Date().toISOString() });
+      rs.set(DIAG_KEY, merged);
+      rs.saveAsync(function () {});
+    } catch (e) {
+      // Diagnostic write must never throw into the handler path.
+    }
   }
 
   function getRoaming() {
@@ -198,39 +218,58 @@
 
   function onMessageSendHandler(event) {
     log("handler invoked");
+    var startedAt = Date.now();
     var completed = false;
     var stage = "init";
+    var setStage = function (next) {
+      stage = next;
+      recordDiag({ stage: stage, msSinceStart: Date.now() - startedAt });
+    };
     var finish = function (errorMessage) {
       if (completed) return;
       completed = true;
       var opts = { allowEvent: true };
       if (errorMessage) opts.errorMessage = errorMessage;
       log("finish stage=" + stage + " err=" + (errorMessage || "(none)"));
+      recordDiag({
+        result: errorMessage ? "error" : "ok",
+        finalStage: stage,
+        finalError: errorMessage || null,
+        durationMs: Date.now() - startedAt,
+      });
       try { event.completed(opts); } catch (e) { log("event.completed threw", e); }
     };
+
+    recordDiag({
+      startedAt: new Date(startedAt).toISOString(),
+      stage: stage,
+      result: "pending",
+      finalError: null,
+    });
 
     // Outer safety. If we get here, something below didn't propagate.
     var safety = setTimeout(function () {
       finish("HaloPSA log-on-send hung in stage \"" + stage + "\" — email sent anyway.");
     }, SAFETY_MS);
 
-    stage = "loadCustomProps";
+    setStage("loadCustomProps");
     loadCustomProps().then(function (cp) {
       var ticketId = cp.get(TICKET_PROP);
       log("ticketId=" + ticketId);
+      recordDiag({ ticketId: ticketId || null });
       if (!ticketId) {
         clearTimeout(safety);
         finish();
         return;
       }
-      stage = "readItem";
+      setStage("readItem");
       return Promise.all([
         readBody(),
         readSubject(),
         readRecipientsField(Office.context.mailbox.item.to),
         readRecipientsField(Office.context.mailbox.item.cc),
       ]).then(function (parts) {
-        stage = "appendToHalo";
+        setStage("appendToHalo");
         return appendToHalo(ticketId, {
           body: parts[0],
           subject: parts[1],
@@ -238,7 +277,7 @@
           cc: parts[3],
         });
       }).then(function () {
-        stage = "clearMarker";
+        setStage("clearMarker");
         // Clear the marker so re-sending the same draft doesn't double-log.
         cp.set(TICKET_PROP, null);
         cp.saveAsync(function () {

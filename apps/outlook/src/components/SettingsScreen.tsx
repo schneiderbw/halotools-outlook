@@ -12,7 +12,7 @@ import {
   Spinner,
 } from "@fluentui/react-components";
 import { ArrowLeft24Regular } from "@fluentui/react-icons";
-import { getConfig } from "@iusehalo/halo-api";
+import { getConfig, storage } from "@iusehalo/halo-api";
 import { getDefaults, setDefaults } from "../lib/defaults";
 import {
   listTicketTypes,
@@ -20,6 +20,21 @@ import {
   clearReferenceCache,
 } from "@iusehalo/halo-api";
 import type { HaloTicketType } from "@iusehalo/halo-api";
+
+// Mirror of the diagnostic record the launch-event runtime writes after each
+// on-send attempt. See apps/outlook/public/launchevent.js.
+interface OnSendDiagnostic {
+  startedAt?: string;
+  updatedAt?: string;
+  stage?: string;
+  msSinceStart?: number;
+  result?: "pending" | "ok" | "error";
+  finalStage?: string;
+  finalError?: string | null;
+  durationMs?: number;
+  ticketId?: number | null;
+}
+const ON_SEND_DIAG_KEY = "halo.lastOnSendDiagnostic.v1";
 
 const useStyles = makeStyles({
   root: {
@@ -86,6 +101,13 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [diag, setDiag] = useState<OnSendDiagnostic | undefined>(() => {
+    try {
+      return storage().get<OnSendDiagnostic>(ON_SEND_DIAG_KEY);
+    } catch {
+      return undefined;
+    }
+  });
 
   useEffect(() => {
     listTicketTypes()
@@ -95,6 +117,14 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const refreshDiag = () => {
+    try {
+      setDiag(storage().get<OnSendDiagnostic>(ON_SEND_DIAG_KEY));
+    } catch {
+      setDiag(undefined);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -205,6 +235,39 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
         >
           Refresh reference data
         </Button>
+
+        <Divider />
+
+        <div>
+          <Text className={styles.sectionLabel}>Last on-send attempt</Text>
+          {diag ? (
+            <>
+              <Text block className={styles.meta}>
+                {diag.startedAt ? new Date(diag.startedAt).toLocaleString() : "—"}
+              </Text>
+              <Text block className={styles.meta}>
+                Result: <strong>{diag.result ?? "—"}</strong>
+                {typeof diag.durationMs === "number" ? ` · ${diag.durationMs}ms` : ""}
+                {diag.ticketId ? ` · ticket #${diag.ticketId}` : ""}
+              </Text>
+              <Text block className={styles.meta}>
+                Stage: {diag.finalStage ?? diag.stage ?? "—"}
+              </Text>
+              {diag.finalError && (
+                <Text block className={styles.meta} style={{ wordBreak: "break-word" }}>
+                  Error: {diag.finalError}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text block className={styles.meta}>
+              No record yet. Send a draft with "Log to ticket" armed to capture one.
+            </Text>
+          )}
+          <Button appearance="subtle" size="small" onClick={refreshDiag}>
+            Refresh
+          </Button>
+        </div>
 
         <Divider />
 
