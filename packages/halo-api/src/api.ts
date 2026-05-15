@@ -377,29 +377,36 @@ export async function getCurrentAgent(
 
 // ---------- Write paths ----------
 
+// Halo's write endpoints accept an array payload but inconsistently return
+// either the single created/updated entity OR a single-element array wrapping
+// it — depending on tenant version. Normalise both shapes to the entity.
+function unwrapWriteResponse<T>(res: T | T[]): T {
+  return Array.isArray(res) ? res[0] : res;
+}
+
 export async function appendAction(payload: CreateActionPayload): Promise<HaloAction> {
-  const res = await call<HaloAction[]>("/Actions", {
+  const res = await call<HaloAction | HaloAction[]>("/Actions", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  return res[0];
+  return unwrapWriteResponse(res);
 }
 
 export async function createTicket(payload: CreateTicketPayload): Promise<HaloTicket> {
-  const res = await call<HaloTicket[]>("/Tickets", {
+  const res = await call<HaloTicket | HaloTicket[]>("/Tickets", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  return res[0];
+  return unwrapWriteResponse(res);
 }
 
 /** Apply a partial update to an existing ticket (status / agent / priority / custom fields). */
 export async function updateTicket(payload: UpdateTicketPayload): Promise<HaloTicket> {
-  const res = await call<HaloTicket[]>("/Tickets", {
+  const res = await call<HaloTicket | HaloTicket[]>("/Tickets", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  return res[0];
+  return unwrapWriteResponse(res);
 }
 
 /** Full client record — includes assigned account manager and other fields not in list results. */
@@ -458,11 +465,11 @@ export async function getContactStats(
 
 /** Create a new contact (HaloPSA "user"). Mirrors createTicket's array-wrapped POST shape. */
 export async function createContact(payload: CreateContactPayload): Promise<HaloUser> {
-  const res = await call<HaloUser[]>("/Users", {
+  const res = await call<HaloUser | HaloUser[]>("/Users", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  return res[0];
+  return unwrapWriteResponse(res);
 }
 
 /**
@@ -506,12 +513,15 @@ export async function listCRMNotes(scope: CRMScope, count = 15): Promise<HaloCRM
 }
 
 export async function createCRMNote(payload: CreateCRMNotePayload): Promise<HaloCRMNote> {
-  const res = await call<{ actions?: HaloCRMNote[] } | HaloCRMNote[]>("/CRMNote", {
+  const res = await call<HaloCRMNote | { actions?: HaloCRMNote[] } | HaloCRMNote[]>("/CRMNote", {
     method: "POST",
     body: JSON.stringify([payload]),
   });
-  const arr = Array.isArray(res) ? res : res.actions ?? [];
-  return arr[0];
+  if (Array.isArray(res)) return res[0];
+  if (res && typeof res === "object" && "actions" in res && Array.isArray(res.actions)) {
+    return res.actions[0];
+  }
+  return res as HaloCRMNote;
 }
 
 // ---------- Activity feed (cross-entity timeline) ----------
