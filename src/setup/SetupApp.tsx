@@ -56,23 +56,6 @@ const useStyles = makeStyles({
     gap: "8px",
     marginBottom: "20px",
   },
-  brandIcon: {
-    width: "56px",
-    height: "56px",
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: BRAND_RED,
-    boxShadow: "0 6px 24px rgba(239,51,64,0.25)",
-  },
-  brandIconInner: {
-    width: "32px",
-    height: "32px",
-    borderRadius: "50%",
-    backgroundColor: tokens.colorNeutralBackground1,
-    position: "relative",
-  },
   brandTitle: {
     fontWeight: tokens.fontWeightBold,
     color: tokens.colorNeutralForeground1,
@@ -292,14 +275,55 @@ function BrandHeader() {
   const styles = useStyles();
   return (
     <div className={styles.brandHeader}>
-      <div className={styles.brandIcon}>
-        <div className={styles.brandIconInner} />
-      </div>
+      <img
+        src="/outlook/assets/icon-128.png"
+        alt=""
+        width={64}
+        height={64}
+        style={{ borderRadius: "50%" }}
+      />
       <Title1 className={styles.brandTitle}>Halo for Outlook</Title1>
       <Text className={styles.brandSubtitle}>
         Tenant-specific add-in packaging for your MSP. Generate a fresh deployment
         or update one you've already shipped.
       </Text>
+      <details
+        style={{
+          marginTop: 8,
+          maxWidth: 560,
+          fontSize: tokens.fontSizeBase200,
+          color: tokens.colorNeutralForeground2,
+        }}
+      >
+        <summary
+          style={{
+            cursor: "pointer",
+            color: BRAND_RED,
+            fontWeight: tokens.fontWeightSemibold,
+          }}
+        >
+          How this works
+        </summary>
+        <div style={{ marginTop: 8, lineHeight: 1.5 }}>
+          <p style={{ margin: "0 0 8px" }}>
+            This wizard builds a Microsoft 365 app package (.zip) that installs
+            "Halo for Outlook" into your tenant. The package is tailored to
+            your HaloPSA instance so users don't have to configure anything on
+            first launch.
+          </p>
+          <p style={{ margin: "0 0 8px" }}>
+            <strong>Three steps:</strong> tell us your HaloPSA URL, register an
+            API application in Halo (we'll walk you through it), and paste the
+            resulting Client ID. You'll get a zip to upload in M365 admin
+            (Settings → Integrated apps).
+          </p>
+          <p style={{ margin: 0 }}>
+            Nothing tenant-specific is stored on our servers. Tokens, ticket
+            data, and email content go directly from your users' Outlook to
+            your HaloPSA — our hosting only serves the static add-in code.
+          </p>
+        </div>
+      </details>
     </div>
   );
 }

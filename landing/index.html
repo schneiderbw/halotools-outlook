@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Halo Tools</title>
+    <meta
+      name="description"
+      content="Tools that connect HaloPSA to the rest of an MSP's day. Halo for Outlook, plus things on the way."
+    />
+    <script>
+      // Defence-in-depth HTTPS redirect.
+      (function () {
+        if (
+          location.protocol === "http:" &&
+          location.hostname !== "localhost" &&
+          location.hostname !== "127.0.0.1"
+        ) {
+          location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+        }
+      })();
+    </script>
+    <style>
+      :root {
+        --brand: #ef3340;
+        --brand-dark: #d92733;
+        --brand-soft: #fee7e9;
+        --ink: #1c1c1e;
+        --ink-2: #45494e;
+        --ink-3: #6c7079;
+        --line: #e6e6e8;
+        --bg: #fafafa;
+        --bg-2: #f1f1f4;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: var(--ink);
+        background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+        min-height: 100vh;
+        line-height: 1.5;
+      }
+      a { color: var(--brand); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      header {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 32px 24px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      header img { width: 36px; height: 36px; border-radius: 50%; }
+      header .wordmark { font-size: 18px; font-weight: 700; }
+      header .by {
+        margin-left: auto;
+        font-size: 13px;
+        color: var(--ink-3);
+      }
+
+      .hero {
+        max-width: 1080px;
+        margin: 32px auto 48px;
+        padding: 0 24px;
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 48px;
+        align-items: center;
+      }
+      .hero .lead h1 {
+        font-size: 44px;
+        line-height: 1.1;
+        margin: 0 0 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .hero .lead p {
+        font-size: 17px;
+        color: var(--ink-2);
+        margin: 0 0 24px;
+        max-width: 520px;
+      }
+      .ctas { display: flex; gap: 10px; flex-wrap: wrap; }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 11px 18px;
+        border-radius: 9px;
+        font-weight: 600;
+        font-size: 15px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .btn:hover { text-decoration: none; }
+      .btn-primary {
+        background: var(--brand);
+        color: #fff;
+        box-shadow: 0 6px 20px rgba(239, 51, 64, 0.25);
+      }
+      .btn-primary:hover { background: var(--brand-dark); }
+      .btn-ghost {
+        background: transparent;
+        color: var(--ink);
+        border-color: var(--line);
+      }
+      .btn-ghost:hover { background: #fff; }
+
+      .hero-art {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hero-art .pulse {
+        width: 220px;
+        height: 220px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, #fff 0%, var(--brand-soft) 60%, transparent 70%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hero-art .pulse img { width: 160px; height: 160px; }
+
+      section { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 56px 0 16px;
+        letter-spacing: -0.005em;
+      }
+      h2 .eyebrow {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--brand);
+        margin-bottom: 4px;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 20px;
+      }
+      .card.muted {
+        background: var(--bg);
+        border-style: dashed;
+      }
+      .card .step {
+        display: inline-flex;
+        width: 22px;
+        height: 22px;
+        align-items: center;
+        justify-content: center;
+        background: var(--brand-soft);
+        color: var(--brand);
+        font-size: 12px;
+        font-weight: 700;
+        border-radius: 50%;
+        margin-bottom: 10px;
+      }
+      .card h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .card p {
+        margin: 0;
+        color: var(--ink-2);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .card .tag {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--ink-3);
+        background: var(--bg-2);
+        padding: 2px 8px;
+        border-radius: 999px;
+        margin-bottom: 10px;
+      }
+      .card .tag.brand { background: var(--brand-soft); color: var(--brand); }
+
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .features {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px 24px;
+      }
+      .features li {
+        position: relative;
+        padding-left: 24px;
+        color: var(--ink-2);
+        font-size: 14px;
+      }
+      .features li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 6px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--brand);
+        opacity: 0.18;
+      }
+      .features li::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 10px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--brand);
+      }
+
+      footer {
+        max-width: 1080px;
+        margin: 64px auto 32px;
+        padding: 16px 24px 0;
+        border-top: 1px solid var(--line);
+        color: var(--ink-3);
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      @media (max-width: 760px) {
+        .hero { grid-template-columns: 1fr; gap: 24px; }
+        .hero .lead h1 { font-size: 32px; }
+        .grid-3, .grid-2, .features { grid-template-columns: 1fr; }
+        .hero-art { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="/outlook/assets/icon-128.png" alt="Halo Tools" />
+      <span class="wordmark">Halo Tools</span>
+      <span class="by">
+        by
+        <a href="https://iusehalo.com" target="_blank" rel="noopener noreferrer">Rising Tide</a>
+      </span>
+    </header>
+
+    <div class="hero">
+      <div class="lead">
+        <h1>HaloPSA, everywhere your team already works.</h1>
+        <p>
+          Small, focused add-ins that put HaloPSA context — tickets, contacts,
+          activity — into the tools MSPs spend their day in. No backend,
+          per-MSP configuration, your tenant's data never touches our servers.
+        </p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="/outlook/setup/">
+            Get started → setup wizard
+          </a>
+          <a
+            class="btn btn-ghost"
+            href="https://github.com/RisingTideGroup/halotools-outlook"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on GitHub
+          </a>
+        </div>
+      </div>
+      <div class="hero-art">
+        <div class="pulse">
+          <img src="/outlook/assets/icon-128.png" alt="" />
+        </div>
+      </div>
+    </div>
+
+    <section>
+      <h2>
+        <span class="eyebrow">Available now</span>
+        Halo for Outlook
+      </h2>
+      <div class="grid-2">
+        <div class="card">
+          <span class="tag brand">In production</span>
+          <h3>Outlook task-pane add-in</h3>
+          <p>
+            Surface the sender's Halo contact and open tickets next to the
+            email. Append the email to a ticket or create a new one without
+            leaving Outlook. RFC-standard threading via <code>Message-ID</code>
+            so replies attach to the right ticket automatically.
+          </p>
+          <p style="margin-top: 14px">
+            <a href="/outlook/setup/" style="font-weight: 600">
+              Open the setup wizard →
+            </a>
+          </p>
+        </div>
+        <div class="card">
+          <span class="tag">Compose side</span>
+          <h3>Templates, KB inserts, log-on-send</h3>
+          <p>
+            On the compose surface: insert your Halo canned text or KB
+            articles, drop a ticket link, and toggle "log this email to a
+            ticket when I send." A launch-event handler runs on Send and
+            appends the email to the ticket you picked — no second tab.
+          </p>
+        </div>
+      </div>
+
+      <ul class="features" style="margin-top: 24px">
+        <li>RFC Message-ID / In-Reply-To threading — no Halo custom fields needed</li>
+        <li>Inline ticket actions (status, priority, agent, due date)</li>
+        <li>Insert Halo canned text + create new canned texts from inside Outlook</li>
+        <li>Activity timeline via the Halo <code>/Feed</code> endpoint</li>
+        <li>"Create contact in Halo" for unmatched senders</li>
+        <li>Self-stamping: the plug-in fills its own threading fields</li>
+        <li>Per-MSP packaging — your tenant's URL + Client ID baked in</li>
+        <li>Pure SPA — no backend, no token storage on our side</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>
+        <span class="eyebrow">Roadmap</span>
+        What's next
+      </h2>
+      <div class="grid-3">
+        <div class="card muted">
+          <span class="tag">Considering</span>
+          <h3>Teams app</h3>
+          <p>
+            Same unified manifest format. Ticket context as a tab on contacts,
+            message extensions to insert tickets + canned text directly into
+            Teams chats.
+          </p>
+        </div>
+        <div class="card muted">
+          <span class="tag">Considering</span>
+          <h3>Browser extension</h3>
+          <p>
+            Halo context anywhere you're working — Hudu, ITGlue, M365 admin,
+            client portals. Highlights known emails on the page, one-click
+            "log this URL to a ticket".
+          </p>
+        </div>
+        <div class="card muted">
+          <span class="tag">Considering</span>
+          <h3>MCP server</h3>
+          <p>
+            Expose HaloPSA to AI assistants via the Model Context Protocol.
+            Natural-language "log this conversation as a note on the Stability
+            Networks account" from Claude or ChatGPT.
+          </p>
+        </div>
+      </div>
+      <p style="margin-top: 16px; color: var(--ink-3); font-size: 13px">
+        Want any of these prioritised? Drop a note at
+        <a href="mailto:hello@iusehalo.com">hello@iusehalo.com</a>
+        or open an issue on the
+        <a
+          href="https://github.com/RisingTideGroup/halotools-outlook/issues"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub repo</a
+        >.
+      </p>
+    </section>
+
+    <footer>
+      <div>
+        <strong>Halo Tools</strong> · built by
+        <a href="https://iusehalo.com" target="_blank" rel="noopener noreferrer">
+          Rising Tide Consulting Group
+        </a>
+      </div>
+      <div>
+        <a href="/outlook/setup/">Setup wizard</a> ·
+        <a href="https://iusehalo.com/privacy" target="_blank" rel="noopener noreferrer">Privacy</a>
+        ·
+        <a href="https://iusehalo.com/terms" target="_blank" rel="noopener noreferrer">Terms</a>
+      </div>
+    </footer>
+  </body>
+</html>
