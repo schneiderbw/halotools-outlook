@@ -4,7 +4,8 @@ import {
   Field,
   Input,
   Text,
-  Title2,
+  Title1,
+  Title3,
   Subtitle2,
   Body1,
   Body1Strong,
@@ -14,12 +15,14 @@ import {
   makeStyles,
   tokens,
   Card,
-  CardHeader,
 } from "@fluentui/react-components";
 import {
   CheckmarkCircle24Filled,
   Copy24Regular,
   ArrowDownload24Regular,
+  Sparkle24Regular,
+  ArrowSync24Regular,
+  ArrowLeft24Regular,
 } from "@fluentui/react-icons";
 import {
   buildPackageZip,
@@ -28,33 +31,64 @@ import {
   readExistingManifest,
 } from "./package";
 
-type Step = "halo-url" | "register-app" | "client-id" | "done";
+type Step = "choose" | "halo-url" | "register-app" | "client-id" | "done";
+type Mode = "new" | "update";
 
 const REDIRECT_URI = `${window.location.origin}/outlook/auth/callback.html`;
 const MANIFEST_TEMPLATE_URL = "/outlook/manifest.json";
+const BRAND_RED = "#EF3340";
 
 const useStyles = makeStyles({
   page: {
     minHeight: "100vh",
     display: "flex",
-    justifyContent: "center",
-    padding: "32px 16px",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    padding: "48px 16px 32px",
     backgroundColor: tokens.colorNeutralBackground2,
+    backgroundImage: `linear-gradient(180deg, ${tokens.colorNeutralBackground2} 0%, ${tokens.colorNeutralBackground3} 100%)`,
+  },
+  brandHeader: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "20px",
+  },
+  brandIcon: {
+    width: "56px",
+    height: "56px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BRAND_RED,
+    boxShadow: "0 6px 24px rgba(239,51,64,0.25)",
+  },
+  brandIconInner: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    backgroundColor: tokens.colorNeutralBackground1,
+    position: "relative",
+  },
+  brandTitle: {
+    fontWeight: tokens.fontWeightBold,
+    color: tokens.colorNeutralForeground1,
+  },
+  brandSubtitle: {
+    color: tokens.colorNeutralForeground3,
+    textAlign: "center",
+    maxWidth: "480px",
   },
   card: {
-    width: "min(640px, 100%)",
+    width: "min(680px, 100%)",
     padding: "28px",
     display: "flex",
     flexDirection: "column",
     gap: "16px",
-  },
-  header: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-  },
-  helpText: {
-    color: tokens.colorNeutralForeground3,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.06)",
   },
   steps: {
     display: "flex",
@@ -64,8 +98,27 @@ const useStyles = makeStyles({
     fontSize: tokens.fontSizeBase200,
   },
   stepActive: {
-    color: tokens.colorBrandForeground1,
+    color: BRAND_RED,
     fontWeight: tokens.fontWeightSemibold,
+  },
+  stepNumber: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "20px",
+    height: "20px",
+    borderRadius: "50%",
+    backgroundColor: tokens.colorNeutralBackground3,
+    fontSize: "11px",
+    fontWeight: tokens.fontWeightSemibold,
+    marginRight: "6px",
+  },
+  stepNumberActive: {
+    backgroundColor: BRAND_RED,
+    color: "#fff",
+  },
+  helpText: {
+    color: tokens.colorNeutralForeground3,
   },
   codeRow: {
     display: "flex",
@@ -96,6 +149,94 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "6px",
   },
+  // Mode-choice grid: two large, equal cards that the user clicks to pick a path.
+  modeGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "16px",
+    "@media (max-width: 540px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  modeCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    padding: "20px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusXLarge,
+    cursor: "pointer",
+    backgroundColor: tokens.colorNeutralBackground1,
+    transition: "transform 80ms, box-shadow 80ms, outline 80ms",
+    textAlign: "left",
+    outline: "1px solid transparent",
+    outlineOffset: "-1px",
+    ":hover": {
+      outline: `2px solid ${BRAND_RED}`,
+      boxShadow: `0 10px 24px rgba(239,51,64,0.12)`,
+    },
+  },
+  modeIconWrap: {
+    width: "40px",
+    height: "40px",
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: "#FEE7E9",
+    color: BRAND_RED,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modeTitle: {
+    fontWeight: tokens.fontWeightSemibold,
+    fontSize: tokens.fontSizeBase400,
+    color: tokens.colorNeutralForeground1,
+  },
+  modeBody: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: 1.4,
+  },
+  modeArrow: {
+    marginTop: "auto",
+    color: BRAND_RED,
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    color: tokens.colorNeutralForeground3,
+  },
+  updatePanel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+    padding: "16px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusLarge,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  updatePanelDivider: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    "::before": { content: '""', flex: 1, height: "1px", backgroundColor: tokens.colorNeutralStroke2 },
+    "::after": { content: '""', flex: 1, height: "1px", backgroundColor: tokens.colorNeutralStroke2 },
+  },
+  primary: {
+    backgroundColor: BRAND_RED,
+    border: `1px solid ${BRAND_RED}`,
+    color: "#fff",
+    ":hover": {
+      backgroundColor: "#d92733",
+      color: "#fff",
+    },
+    ":hover:active": {
+      backgroundColor: "#bb1f2b",
+      color: "#fff",
+    },
+  },
 });
 
 function CopyableValue({ value }: { value: string }) {
@@ -124,23 +265,49 @@ function CopyableValue({ value }: { value: string }) {
 
 function StepIndicator({ step }: { step: Step }) {
   const styles = useStyles();
-  const order: Step[] = ["halo-url", "register-app", "client-id", "done"];
-  const idx = order.indexOf(step);
+  const order: Array<{ key: Step; label: string }> = [
+    { key: "halo-url", label: "Halo URL" },
+    { key: "register-app", label: "Register app" },
+    { key: "client-id", label: "Client ID" },
+  ];
+  const idx = order.findIndex((s) => s.key === step);
   return (
     <div className={styles.steps}>
-      {order.slice(0, 3).map((s, i) => (
-        <span key={s} className={idx === i ? styles.stepActive : undefined}>
-          {i + 1}. {s === "halo-url" ? "Halo URL" : s === "register-app" ? "Register app" : "Client ID"}
-          {i < 2 ? " →" : ""}
+      {order.map((s, i) => (
+        <span key={s.key} className={idx === i ? styles.stepActive : undefined}>
+          <span
+            className={`${styles.stepNumber} ${idx === i ? styles.stepNumberActive : ""}`}
+          >
+            {i + 1}
+          </span>
+          {s.label}
+          {i < order.length - 1 ? " →" : ""}
         </span>
       ))}
     </div>
   );
 }
 
+function BrandHeader() {
+  const styles = useStyles();
+  return (
+    <div className={styles.brandHeader}>
+      <div className={styles.brandIcon}>
+        <div className={styles.brandIconInner} />
+      </div>
+      <Title1 className={styles.brandTitle}>Halo for Outlook</Title1>
+      <Text className={styles.brandSubtitle}>
+        Tenant-specific add-in packaging for your MSP. Generate a fresh deployment
+        or update one you've already shipped.
+      </Text>
+    </div>
+  );
+}
+
 export function SetupApp() {
   const styles = useStyles();
-  const [step, setStep] = useState<Step>("halo-url");
+  const [step, setStep] = useState<Step>("choose");
+  const [mode, setMode] = useState<Mode | undefined>();
   const [haloUrl, setHaloUrl] = useState("");
   const [clientId, setClientId] = useState("");
   // When set, the regenerated package keeps this GUID so M365 admin treats
@@ -161,6 +328,21 @@ export function SetupApp() {
       return;
     }
     setStep("register-app");
+  };
+
+  const pickMode = (m: Mode) => {
+    setError(undefined);
+    setMode(m);
+    setStep("halo-url");
+  };
+
+  const reset = () => {
+    setStep("choose");
+    setMode(undefined);
+    setHaloUrl("");
+    setClientId("");
+    setExistingAppId(undefined);
+    setError(undefined);
   };
 
   const handleExistingPackage = async (file: File) => {
@@ -207,23 +389,69 @@ export function SetupApp() {
 
   return (
     <div className={styles.page}>
+      <BrandHeader />
       <Card className={styles.card}>
-        <CardHeader
-          header={
-            <div className={styles.header}>
-              <Title2>Halo for Outlook — setup</Title2>
-              <Body1 className={styles.helpText}>
-                Generate a tenant-specific Outlook app package for your MSP. Upload
-                the resulting zip in the Microsoft 365 admin center and your team
-                gets the add-in preconfigured for your HaloPSA instance.
-              </Body1>
+        {step === "choose" && (
+          <>
+            <Title3>What are you doing?</Title3>
+            <Body1 className={styles.helpText}>
+              Pick the option that matches what you need — both produce a
+              package you can upload in admin.microsoft.com → Integrated apps.
+            </Body1>
+            <div className={styles.modeGrid}>
+              <button
+                className={styles.modeCard}
+                onClick={() => pickMode("new")}
+                type="button"
+              >
+                <div className={styles.modeIconWrap}>
+                  <Sparkle24Regular />
+                </div>
+                <div className={styles.modeTitle}>Set up a new deployment</div>
+                <div className={styles.modeBody}>
+                  First time deploying Halo for Outlook to your tenant.
+                  We'll walk through Halo Connect setup and generate a fresh
+                  app package with a new ID.
+                </div>
+                <div className={styles.modeArrow}>Start →</div>
+              </button>
+
+              <button
+                className={styles.modeCard}
+                onClick={() => pickMode("update")}
+                type="button"
+              >
+                <div className={styles.modeIconWrap}>
+                  <ArrowSync24Regular />
+                </div>
+                <div className={styles.modeTitle}>Update an existing deployment</div>
+                <div className={styles.modeBody}>
+                  Already shipped a package to M365 and want to push the latest
+                  version. Upload your previous zip or paste the existing app
+                  GUID — we'll keep the same ID so M365 treats it as an update.
+                </div>
+                <div className={styles.modeArrow}>Update →</div>
+              </button>
             </div>
-          }
-        />
+          </>
+        )}
 
-        {step !== "done" && <StepIndicator step={step} />}
+        {step !== "choose" && step !== "done" && (
+          <>
+            <Button
+              appearance="subtle"
+              size="small"
+              className={styles.backButton}
+              icon={<ArrowLeft24Regular />}
+              onClick={reset}
+            >
+              Start over
+            </Button>
+            <StepIndicator step={step} />
+          </>
+        )}
 
-        {step === "halo-url" && (
+        {step === "halo-url" && mode === "new" && (
           <>
             <Field
               label="HaloPSA URL"
@@ -245,23 +473,63 @@ export function SetupApp() {
             <div className={styles.buttonRow}>
               <Button
                 appearance="primary"
+                className={styles.primary}
                 disabled={!haloUrl.trim()}
                 onClick={submitHaloUrl}
               >
                 Next
               </Button>
             </div>
+          </>
+        )}
 
+        {step === "halo-url" && mode === "update" && (
+          <div className={styles.updatePanel}>
+            <Subtitle2>Identify the deployment you're updating</Subtitle2>
+            <Body1 className={styles.helpText}>
+              Either upload the zip you generated last time (we'll read the app
+              ID, Halo URL, and Client ID out of it and skip you to the
+              download), or paste the app ID from M365 admin and fill the
+              other fields by hand.
+            </Body1>
             <ExistingPackageUpload
               onPick={handleExistingPackage}
               onPasteId={(id) => {
                 setExistingAppId(id);
                 setError(undefined);
-                // Halo URL + Client ID still need answers in this branch, so
-                // keep the user on the regular wizard flow.
               }}
             />
-          </>
+            <div className={styles.updatePanelDivider}>
+              <span>or fill in by hand</span>
+            </div>
+            <Field
+              label="HaloPSA URL"
+              required
+              hint="Same URL the existing deployment uses."
+            >
+              <Input
+                value={haloUrl}
+                onChange={(_, d) => setHaloUrl(d.value)}
+                placeholder="https://halo.yourcompany.com"
+                autoComplete="off"
+              />
+            </Field>
+            {error && (
+              <MessageBar intent="error">
+                <MessageBarBody>{error}</MessageBarBody>
+              </MessageBar>
+            )}
+            <div className={styles.buttonRow}>
+              <Button
+                appearance="primary"
+                className={styles.primary}
+                disabled={!haloUrl.trim() || !existingAppId}
+                onClick={submitHaloUrl}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         )}
 
         {existingAppId && step !== "halo-url" && step !== "done" && (
@@ -327,6 +595,7 @@ export function SetupApp() {
               <Button appearance="secondary" onClick={() => setStep("register-app")} disabled={building}>Back</Button>
               <Button
                 appearance="primary"
+                className={styles.primary}
                 icon={<ArrowDownload24Regular />}
                 disabled={!clientId.trim() || building}
                 onClick={downloadPackage}
@@ -406,16 +675,7 @@ export function SetupApp() {
                 it auto-configures for your HaloPSA instance — no per-user setup.
               </Text>
               <div className={styles.buttonRow}>
-                <Button
-                  onClick={() => {
-                    setStep("halo-url");
-                    setHaloUrl("");
-                    setClientId("");
-                    setExistingAppId(undefined);
-                  }}
-                >
-                  Build another package
-                </Button>
+                <Button onClick={reset}>Build another package</Button>
               </div>
             </div>
           </>
