@@ -11,3 +11,13 @@ coverage/
 dist-node/
 tsconfig.tsbuildinfo
 .claude/
+
+# In-flight agent worktree outputs — these directories belong to the
+# respective agent branches and get merged in via PR, not by stray files
+# leaking into main. Remove these lines after the four sibling packages
+# (teams, mcp, browser-ext, packages/halo-api) are properly integrated.
+mcp/
+teams/
+browser-ext/
+packages/
+apps/
