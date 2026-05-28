@@ -160,13 +160,28 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
 }
 
 /**
+ * Result of building the M365 admin upload zip. Includes the version we
+ * stamped into the manifest so callers can show it in the UI and include
+ * it in the download filename without re-parsing the zip.
+ */
+export interface PackageBuildResult {
+  blob: Blob;
+  /** The version stamped into the generated manifest (e.g. "1.0.1.0"). */
+  version: string;
+  /** The prior version (if any) passed in as input.existingVersion. */
+  previousVersion?: string;
+  /** The display name written into the manifest, for UI / filename. */
+  appName: string;
+}
+
+/**
  * Produce the M365 admin upload zip. Contains the customized manifest at the
  * root plus the icon files the manifest references via relative paths.
  */
 export async function buildPackageZip(
   template: Manifest,
   input: TenantInput,
-): Promise<Blob> {
+): Promise<PackageBuildResult> {
   const manifest = buildManifest(template, input);
   const iconPaths = new Set<string>();
   if (manifest.icons?.outline) iconPaths.add(manifest.icons.outline);
@@ -187,7 +202,12 @@ export async function buildPackageZip(
   );
 
   const zipped = zipSync(files, { level: 6 });
-  return new Blob([zipped.buffer as ArrayBuffer], { type: "application/zip" });
+  return {
+    blob: new Blob([zipped.buffer as ArrayBuffer], { type: "application/zip" }),
+    version: manifest.version,
+    previousVersion: input.existingVersion,
+    appName: manifest.name.short,
+  };
 }
 
 export function downloadBlob(blob: Blob, filename: string): void {

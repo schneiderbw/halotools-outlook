@@ -23,6 +23,7 @@ import {
   Sparkle24Regular,
   ArrowSync24Regular,
   ArrowLeft24Regular,
+  ArrowUpload24Regular,
 } from "@fluentui/react-icons";
 import {
   buildPackageZip,
@@ -342,6 +343,10 @@ export function SetupApp() {
   // Pulled out of an uploaded zip so we can bump the patch on the regenerated
   // manifest — M365 admin's Update flow rejects same-or-lower versions.
   const [existingVersion, setExistingVersion] = useState<string | undefined>();
+  // The version stamped into the most recently generated package. Shown on
+  // the done page so admins can verify exactly what they're about to upload
+  // matches the version their tenant will see in M365 admin.
+  const [generatedVersion, setGeneratedVersion] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [building, setBuilding] = useState(false);
 
@@ -398,17 +403,21 @@ export function SetupApp() {
     setBuilding(true);
     try {
       const template = await fetchTemplate(MANIFEST_TEMPLATE_URL);
-      const zip = await buildPackageZip(template, {
+      const result = await buildPackageZip(template, {
         haloBaseUrl: normalizedHalo,
         clientId: clientId.trim(),
         existingAppId,
         existingVersion,
       });
       const slug = new URL(normalizedHalo).hostname.replace(/\./g, "-");
-      const filename = existingAppId
-        ? `halo-outlook-${slug}-update.zip`
-        : `halo-outlook-${slug}.zip`;
-      downloadBlob(zip, filename);
+      // Filename carries the version so an admin who saves multiple
+      // generated packages can tell at a glance which one is which without
+      // unzipping each. Update vs fresh prefix stays so the file's intent
+      // is also clear from the filename alone.
+      const prefix = existingAppId ? "halo-outlook-update" : "halo-outlook";
+      const filename = `${prefix}-${slug}-v${result.version}.zip`;
+      downloadBlob(result.blob, filename);
+      setGeneratedVersion(result.version);
       setStep("done");
     } catch (e) {
       setError((e as Error).message);
@@ -649,10 +658,19 @@ export function SetupApp() {
               <MessageBarBody>
                 <MessageBarTitle>
                   {existingAppId ? "Update package ready" : "Package ready"}
+                  {generatedVersion ? ` — version ${generatedVersion}` : null}
                 </MessageBarTitle>
                 {existingAppId
                   ? "Upload it to Microsoft 365 — M365 will replace the existing deployment because the app ID matches."
                   : "Now upload it to Microsoft 365."}
+                {existingVersion && generatedVersion ? (
+                  <Body1 block style={{ marginTop: 6 }}>
+                    Bumped from <strong>{existingVersion}</strong> →{" "}
+                    <strong>{generatedVersion}</strong>. Microsoft 365 admin
+                    requires the new version to be strictly greater than what's
+                    deployed; this satisfies that.
+                  </Body1>
+                ) : null}
               </MessageBarBody>
             </MessageBar>
             <MessageBar intent="warning">
@@ -742,6 +760,7 @@ function ExistingPackageUpload({
   const inputRef = useRef<HTMLInputElement>(null);
   const [pastedId, setPastedId] = useState("");
   const [pasteError, setPasteError] = useState<string | undefined>();
+  const [dragOver, setDragOver] = useState(false);
   const guidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   const submitId = () => {
@@ -762,22 +781,57 @@ function ExistingPackageUpload({
         borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
         display: "flex",
         flexDirection: "column",
-        gap: 8,
+        gap: 12,
       }}
     >
       <Body1 style={{ color: tokens.colorNeutralForeground3 }}>
-        Updating an existing deployment? Either upload your current package or
-        paste the app ID — M365 will treat the result as an update instead of a
-        new install.
+        Updating an existing deployment? Drop the .zip you generated last time —
+        we'll read the app ID, Halo URL, and Client ID out of it and skip you
+        straight to the download.
       </Body1>
-      <div>
-        <Button
-          appearance="subtle"
-          size="small"
-          onClick={() => inputRef.current?.click()}
-        >
-          Upload existing package…
-        </Button>
+      {/* Primary path: upload existing package. A bordered drop-zone with an
+          icon makes this visually obvious; the previous subtle text button was
+          easily missed. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!dragOver) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) onPick(file);
+        }}
+        style={{
+          border: `2px dashed ${dragOver ? tokens.colorBrandStroke1 : tokens.colorNeutralStroke1}`,
+          borderRadius: tokens.borderRadiusMedium,
+          padding: "20px 16px",
+          textAlign: "center",
+          cursor: "pointer",
+          background: dragOver ? tokens.colorBrandBackground2 : tokens.colorNeutralBackground2,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 6,
+          transition: "background 120ms, border-color 120ms",
+        }}
+      >
+        <ArrowUpload24Regular style={{ color: tokens.colorBrandForeground1 }} />
+        <Body1Strong>Upload existing package</Body1Strong>
+        <Body1 style={{ color: tokens.colorNeutralForeground3, fontSize: 12 }}>
+          Drop a .zip or manifest.json here, or click to browse.
+        </Body1>
         <input
           ref={inputRef}
           type="file"
@@ -791,8 +845,24 @@ function ExistingPackageUpload({
           }}
         />
       </div>
+      {/* Fallback path: paste the app ID. Visually demoted with a small "or"
+          divider so admins reach for the upload first when they have the .zip. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginTop: 4,
+          color: tokens.colorNeutralForeground3,
+        }}
+      >
+        <div style={{ flex: 1, height: 1, background: tokens.colorNeutralStroke2 }} />
+        <Body1 style={{ color: tokens.colorNeutralForeground3, fontSize: 12 }}>
+          or paste the app ID
+        </Body1>
+        <div style={{ flex: 1, height: 1, background: tokens.colorNeutralStroke2 }} />
+      </div>
       <Field
-        label="Or paste the app ID from M365 admin"
         hint="Microsoft 365 admin → Integrated apps → Halo → app details. It's a GUID."
         validationState={pasteError ? "error" : undefined}
         validationMessage={pasteError}
