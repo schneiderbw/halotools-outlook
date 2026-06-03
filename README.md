@@ -2,6 +2,12 @@
 
 Modern Outlook task-pane add-in for HaloPSA. Surfaces sender context and ticket history, and lets agents log emails to tickets (append or create) without leaving Outlook.
 
+## Installation
+
+Go to https://tools.iusehalo.com and follow the instructions 🙂
+
+The below details are for security review or self-hosting only.
+
 ## Architecture
 
 - **Pure SPA** — OAuth2 + PKCE public client, no backend. Direct browser → HaloPSA API.
