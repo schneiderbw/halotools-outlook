@@ -5,6 +5,7 @@ import {
   tokens,
   Text,
   Field,
+  Input,
   Combobox,
   Option,
   Switch,
@@ -26,6 +27,7 @@ import {
   downloadEvents,
   type LogEntry,
 } from "../lib/diagnostics";
+import { buildMcpUrl } from "../lib/mcp-url";
 
 const useStyles = makeStyles({
   root: {
@@ -125,6 +127,11 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<LogEntry[]>(() => getEvents());
   const [copyStatus, setCopyStatus] = useState<string | undefined>();
+  const [mcpCopyStatus, setMcpCopyStatus] = useState<string | undefined>();
+  const mcpUrl =
+    cfg?.haloBaseUrl && cfg?.clientId
+      ? buildMcpUrl(cfg.haloBaseUrl, cfg.clientId)
+      : undefined;
 
   useEffect(() => {
     listTicketTypes()
@@ -165,6 +172,16 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
   const handleClearEvents = () => {
     clearEvents();
     setEvents([]);
+  };
+  const handleCopyMcpUrl = async () => {
+    if (!mcpUrl) return;
+    try {
+      await navigator.clipboard.writeText(mcpUrl);
+      setMcpCopyStatus("Copied");
+    } catch {
+      setMcpCopyStatus("Copy failed — select and copy manually");
+    }
+    setTimeout(() => setMcpCopyStatus(undefined), 2500);
   };
 
   const save = async () => {
@@ -276,6 +293,38 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
         >
           Refresh reference data
         </Button>
+
+        <Divider />
+
+        <div>
+          <Text className={styles.sectionLabel}>AI assistants (MCP)</Text>
+          <Text block className={styles.meta}>
+            Expose your HaloPSA to Claude, ChatGPT, Cursor and any other Model
+            Context Protocol client. Paste this URL into the MCP server settings
+            of the assistant — sign-in goes through your Halo login. Requires{" "}
+            <strong>https://tools.iusehalo.com/auth/callback</strong> on your
+            Halo Connect app's redirect URIs.
+          </Text>
+          {mcpUrl ? (
+            <>
+              <Field label="MCP server URL" style={{ marginTop: 8 }}>
+                <Input value={mcpUrl} readOnly onFocus={(e) => e.currentTarget.select()} />
+              </Field>
+              <div className={styles.diagButtons}>
+                <Button appearance="primary" size="small" onClick={handleCopyMcpUrl}>
+                  Copy URL
+                </Button>
+                {mcpCopyStatus && (
+                  <Text className={styles.meta}>{mcpCopyStatus}</Text>
+                )}
+              </div>
+            </>
+          ) : (
+            <Text block className={styles.meta}>
+              Configure your Halo connection first to generate your MCP URL.
+            </Text>
+          )}
+        </div>
 
         <Divider />
 
