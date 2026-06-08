@@ -12,12 +12,12 @@
   ],
   "scripts": {
     "dev": "npm -w halo-outlook-addin run dev",
-    "build": "npm -w @iusehalo/halo-api run build && npm -w halo-outlook-addin run build && npm -w halo-teams-app run build",
+    "build": "npm -w @iusehalo/halo-api run build && npm -w halo-outlook-addin run build && npm -w halo-teams-app run build && npm -w halo-mcp-server run build",
     "build:outlook": "npm -w @iusehalo/halo-api run build && npm -w halo-outlook-addin run build",
     "build:teams": "npm -w @iusehalo/halo-api run build && npm -w halo-teams-app run build",
     "build:mcp": "npm -w @iusehalo/halo-api run build && npm -w halo-mcp-server run build",
     "build:browser-ext": "npm -w @iusehalo/halo-api run build && npm -w halo-browser-ext run build",
-    "typecheck": "npm -w @iusehalo/halo-api run typecheck && npm -w halo-outlook-addin exec -- tsc -b && npm -w halo-teams-app exec -- tsc -b",
+    "typecheck": "npm -w @iusehalo/halo-api run typecheck && npm -w halo-outlook-addin exec -- tsc -b && npm -w halo-teams-app exec -- tsc -b && npm -w halo-mcp-server exec -- tsc --noEmit",
     "validate-manifest": "npm -w halo-outlook-addin run validate-manifest"
   }
 }

@@ -65,7 +65,10 @@ export function ConfigScreen({ onConfigured }: Props) {
       <Text className={styles.helpText}>
         Your HaloPSA administrator should register an Application in Halo Config →
         Integrations → Halo Connect → API, with Authorization Code grant, PKCE enabled, and
-        a redirect URI of <strong>https://tools.iusehalo.com/outlook/auth/callback.html</strong>.
+        redirect URIs of <strong>https://tools.iusehalo.com/outlook/auth/callback.html</strong>{" "}
+        and <strong>https://tools.iusehalo.com/auth/callback</strong>{" "}
+        (the second is the universal callback shared by Outlook, the MCP server for AI
+        assistants, and any future iusehalo tools — register once, never touch again).
         Add <strong>https://tools.iusehalo.com</strong> to the app's CORS whitelist.
       </Text>
 

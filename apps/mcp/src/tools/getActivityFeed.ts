@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { listFeed } from "../halo/client.js";
-import { getHaloAuth } from "../halo/context.js";
+import { listFeed } from "@iusehalo/halo-api";
 
 const inputSchema = {
   client_id: z
@@ -52,9 +51,7 @@ export function registerGetActivityFeed(server: McpServer): void {
           ],
         };
       }
-      const auth = getHaloAuth();
       const feed = await listFeed(
-        auth,
         { client_id, user_id, site_id },
         count ?? 20,
       );

@@ -1,8 +1,13 @@
 # halo-mcp-server
 
-Model Context Protocol server exposing HaloPSA as a tool for AI assistants (Claude Desktop, ChatGPT desktop, Cursor, etc.).
+Model Context Protocol server exposing HaloPSA as tools for AI assistants (Claude Desktop, ChatGPT desktop, Cursor, etc.).
 
-This is a sibling deployment to the Outlook add-in in the parent repo. The add-in is browser-side; this server is Node-side and runs either as a local subprocess (stdio) or as a hosted service (HTTP+SSE via the Streamable HTTP transport).
+Lives alongside the Outlook add-in and Teams app under `apps/`; shares HaloPSA logic with them via the workspace package `@iusehalo/halo-api`.
+
+Runs in two modes:
+
+- **stdio** — Claude / Cursor spawn it as a subprocess and talk JSON-RPC over stdin/stdout. Single-tenant: env vars supply Halo URL + access token at process start.
+- **HTTP** — hosted at `tools.iusehalo.com/mcp/t/<config>/`. Multi-tenant: every request carries a Halo access token, and OAuth sign-in is bridged to the user's own HaloPSA login. This is the mode meant for `tools.iusehalo.com`.
 
 ## What it exposes
 
@@ -17,150 +22,151 @@ This is a sibling deployment to the Outlook add-in in the parent repo. The add-i
 | `searchCannedText`      | Search saved canned-text snippets, optionally scoped to a group.            |
 | `getActivityFeed`       | Merged activity feed (actions, notes, status changes) for a client/user.    |
 
-## Install / build
+More to come: time entries, invoices, recurring invoices, reports, runbooks, etc.
 
-From inside `mcp/`:
+## Build & run
+
+From the repo root:
 
 ```bash
 npm install
-npm run build
+npm run build:mcp           # builds @iusehalo/halo-api then halo-mcp-server
+node apps/mcp/dist/index.js --stdio   # default
+node apps/mcp/dist/index.js --http    # PORT=3001
 ```
 
-Produces `dist/index.js`. The binary alias `halo-mcp` resolves to `dist/index.js`.
+## HTTP architecture
 
-## Run modes
-
-```bash
-node dist/index.js --stdio    # default; for local Claude Desktop / Cursor
-node dist/index.js --http     # listens on PORT (default 3001) at /mcp
-```
-
-`MCP_TRANSPORT=http` env var has the same effect as `--http`.
-
-## Configuration
-
-### Stdio mode (local desktop integration)
-
-Set these env vars before launching:
-
-| Var                   | Required          | Notes                                                      |
-| --------------------- | ----------------- | ---------------------------------------------------------- |
-| `HALO_BASE_URL`       | yes               | e.g. `https://acme.halopsa.com`                            |
-| `HALO_ACCESS_TOKEN`   | one of            | Pre-issued bearer token.                                   |
-| `HALO_CLIENT_ID`      | one of (with secret) | Halo Connect application client ID.                     |
-| `HALO_CLIENT_SECRET`  | with `HALO_CLIENT_ID` | Halo Connect application client secret. Server-side only. |
-| `HALO_SCOPE`          | no                | Defaults to `all`.                                         |
-
-With client credentials, the server exchanges them for a token at `<base>/auth/token` and caches it until expiry.
-
-### HTTP mode (hosted multi-tenant)
-
-Each request must include `Authorization: Bearer <token>`. Token format:
-
-- `halo:<base-url>:<halo-access-token>` — pre-issued bearer token (recommended).
-- `haloc:<base-url>:<client-id>:<client-secret>` — server exchanges for a token.
-
-Examples:
+Every MCP URL bakes in the user's HaloPSA tenant. The shape is:
 
 ```
-Authorization: Bearer halo:https://acme.halopsa.com:eyJhbGciOiJIUzI1NiJ9.AbC...
-Authorization: Bearer haloc:https://acme.halopsa.com:abcd1234:s3cr3t
+https://tools.iusehalo.com/mcp/t/<config>/
 ```
 
-**Security notes for HTTP mode**
+where `<config>` is `base64url(JSON({halo, clientId}))`. Endpoints under that base:
 
-- This server has no rate limit and no token validation beyond passing the value straight to Halo.
-- Put a reverse proxy (nginx / Cloudflare) in front for TLS, rate limiting, and IP allow-listing.
-- The `haloc:` form puts a client secret on the wire (encrypted in transit, but parsed server-side) — prefer `halo:` with rotating short-lived tokens where possible.
-- Falls back to `HALO_*` env vars if no Authorization header is sent. Disable that fallback in shared deployments by leaving the env vars unset.
+| Method | Path                                            | Purpose                                                                          |
+| ------ | ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| POST   | `/`                                             | Streamable HTTP transport — JSON-RPC. Requires `Authorization: Bearer <token>`.  |
+| GET    | `/.well-known/oauth-protected-resource`         | RFC 9728 metadata pointing the client at our authorization server (us).          |
+| GET    | `/.well-known/oauth-authorization-server`       | RFC 8414 metadata describing `/authorize`, `/token`, `/register`.                |
+| GET    | `/authorize`                                    | 302 to `halo.<tenant>/auth/authorize` — user sees the real Halo login.           |
+| POST   | `/token`                                        | Server-to-server forward to `halo.<tenant>/auth/token`.                          |
+| POST   | `/register`                                     | RFC 7591 dynamic client registration (stubbed — every client_id is accepted).    |
 
-If you only need it for one Halo tenant, just set the env vars and skip per-request auth.
+And one URL shared across the whole iusehalo tools hub:
 
-## Adding to Claude Desktop
+| Method | Path             | Purpose                                                              |
+| ------ | ---------------- | -------------------------------------------------------------------- |
+| GET    | `/auth/callback` | Single redirect target Halo sees. Dispatches by `state:` prefix.     |
 
-In `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the Windows equivalent:
+### OAuth flow (Claude perspective)
 
-```json
+1. User pastes the MCP URL into Claude. Claude does normal MCP connect; we respond `401 + WWW-Authenticate` pointing at our protected-resource metadata.
+2. Claude follows discovery → finds our authorization server metadata → kicks off OAuth with PKCE.
+3. Claude opens the user's browser to `/authorize`. We 302 to `halo.<tenant>/auth/authorize` — **user sees their real Halo login page, not a proxied one**.
+4. After login Halo redirects to `/auth/callback` (the shared endpoint). State is `mcp:<id>`; we exchange Halo's code for tokens server-to-server, then mint a one-time code for Claude.
+5. Claude POSTs `/token` with PKCE verifier; we hand back the Halo access + refresh tokens.
+6. Claude stores those tokens, sends Bearer on each MCP call. **Tokens never live server-side**.
+7. Refresh: Claude POSTs `/token` with `grant_type=refresh_token`; we forward to Halo and return the response verbatim.
+
+### Why a server in the middle at all
+
+Halo Connect apps require a pre-registered `redirect_uri`. Claude's callback URL changes per session (`http://127.0.0.1:<random>/callback`), so Halo can't redirect there directly. Our `/auth/callback` is the one URL the admin ever registers; we bounce the code to wherever the current MCP client asked.
+
+The same callback also serves Outlook (via `state=outlook:<id>`), so admins register **one** URL and never need to touch their Halo Connect app again to enable new tools.
+
+## Halo Connect setup (admin)
+
+1. In Halo: Config → Integrations → Halo Connect → API → New Application.
+2. Grant type: **Authorization Code**. PKCE: **on**.
+3. Redirect URIs:
+   - `https://tools.iusehalo.com/outlook/auth/callback.html` (Outlook v1, deprecated in a future bump)
+   - `https://tools.iusehalo.com/auth/callback` (shared callback — covers MCP and every future tool)
+4. CORS: add `https://tools.iusehalo.com`.
+5. Scopes: `all` (or scope down per Halo's docs).
+6. Copy the Client ID — that goes into both Outlook setup and the MCP URL.
+
+## Adding to Claude Desktop / Cursor (HTTP)
+
+```jsonc
+{
+  "mcpServers": {
+    "halo": {
+      "url": "https://tools.iusehalo.com/mcp/t/<config>/"
+    }
+  }
+}
+```
+
+The MCP URL with `<config>` filled in is shown in the Outlook task pane's **Settings → AI assistants (MCP)** section once the user has signed in. Copy-button included.
+
+For end users without the Outlook add-in: build the URL by base64url-encoding `JSON({halo: "https://halo.your-tenant.com", clientId: "<your Halo Connect client id>"})` and pasting it into `https://tools.iusehalo.com/mcp/t/<that>/`.
+
+## Adding to Claude Desktop (local stdio)
+
+For quick local testing without standing up the HTTP server:
+
+```jsonc
 {
   "mcpServers": {
     "halo": {
       "command": "node",
-      "args": ["/absolute/path/to/halotools-outlook/mcp/dist/index.js", "--stdio"],
+      "args": ["/absolute/path/halotools-outlook/apps/mcp/dist/index.js", "--stdio"],
       "env": {
-        "HALO_BASE_URL": "https://acme.halopsa.com",
-        "HALO_CLIENT_ID": "your-halo-connect-client-id",
-        "HALO_CLIENT_SECRET": "your-halo-connect-client-secret"
+        "HALO_BASE_URL": "https://halo.your-tenant.com",
+        "HALO_ACCESS_TOKEN": "<pre-issued bearer token>"
       }
     }
   }
 }
 ```
-
-If you publish the package to npm as `halo-mcp-server`, you can use `npx` instead:
-
-```json
-{
-  "mcpServers": {
-    "halo": {
-      "command": "npx",
-      "args": ["-y", "halo-mcp-server", "--stdio"],
-      "env": {
-        "HALO_BASE_URL": "https://acme.halopsa.com",
-        "HALO_ACCESS_TOKEN": "<token>"
-      }
-    }
-  }
-}
-```
-
-Restart Claude Desktop; tools appear in the MCP panel.
-
-## Adding to Cursor
-
-Same shape under `.cursor/mcp.json` in the workspace, or in user settings under `mcp.servers`.
 
 ## Hosted deployment
 
-The repo's pattern is EasyPanel. Build:
+The root `Dockerfile` builds and runs everything in one container:
+
+- nginx serves the landing page + Outlook SPA + Teams SPA
+- the Node MCP server runs alongside on `127.0.0.1:3001`
+- nginx reverse-proxies `/mcp/*` and `/auth/callback` to Node
 
 ```bash
-docker build -t halo-mcp-server -f Dockerfile .
-docker run --rm -p 3001:3001 halo-mcp-server
+docker build -t halotools .
+docker run --rm -p 80:80 \
+  -e MCP_PUBLIC_ORIGIN=https://tools.iusehalo.com \
+  halotools
 ```
 
-For `tools.iusehalo.com/mcp`, drop a second EasyPanel service that builds this `Dockerfile`. Route `/mcp` to it via nginx; keep the existing add-in at `/outlook/`. Health check is `GET /health`.
+Set `MCP_PUBLIC_ORIGIN` so the OAuth metadata advertises the public URL, not whatever nginx infers from the request `Host` header.
+
+The standalone `apps/mcp/Dockerfile` still exists if you want to run just the MCP server in a separate container.
 
 ## Project layout
 
 ```
-mcp/
+apps/mcp/
 ├── package.json
-├── tsconfig.json
-├── Dockerfile
+├── Dockerfile               # standalone MCP-only image (optional)
 ├── src/
-│   ├── index.ts          # entrypoint; stdio / http transport switch
-│   ├── server.ts         # McpServer construction + tool registration
+│   ├── index.ts             # transport selector (stdio | http)
+│   ├── server.ts            # McpServer + tool registration
 │   ├── halo/
-│   │   ├── client.ts     # stateless HaloPSA REST client (server-side fetch)
-│   │   ├── types.ts      # Halo response / payload shapes
-│   │   └── context.ts    # AsyncLocalStorage-based per-request auth context
-│   └── tools/            # one file per MCP tool
-│       ├── findContact.ts
-│       ├── listOpenTickets.ts
-│       ├── searchTickets.ts
-│       ├── createTicket.ts
-│       ├── appendActionToTicket.ts
-│       ├── logNote.ts
-│       ├── searchCannedText.ts
-│       ├── getActivityFeed.ts
-│       └── index.ts
-└── dist/                 # built output (after `npm run build`)
+│   │   └── context.ts       # AsyncLocalStorage adapter → @iusehalo/halo-api
+│   ├── http/
+│   │   ├── server.ts        # HTTP router
+│   │   ├── tenant.ts        # /mcp/t/<config>/ path encode/decode
+│   │   ├── origin.ts        # public-origin resolution behind nginx
+│   │   ├── state-store.ts   # in-memory TTL maps (pending flows, codes)
+│   │   ├── pkce.ts          # PKCE helpers for the Halo leg
+│   │   ├── metadata.ts      # .well-known endpoints + RFC 7591 stub
+│   │   ├── oauth.ts         # /authorize, /token
+│   │   └── callback.ts      # /auth/callback (state-prefix dispatcher)
+│   └── tools/               # one file per MCP tool
 ```
 
 ## Limitations / deferred
 
-- No tests in this skeleton.
-- No tool for attaching files to tickets — actions currently log notes only.
-- No tool for updating an existing ticket's status / assignee — append-only.
-- No prompt or resource exports; tools only.
-- The HTTP transport is stateless; long-running streaming jobs are not supported.
+- No tests yet.
+- No tool for attachments / ticket updates / time entries / invoices — coming.
+- HTTP state (pending OAuth flows, one-time codes) is in-process; horizontal scaling needs Redis or signed JWTs.
+- No rate limiting.

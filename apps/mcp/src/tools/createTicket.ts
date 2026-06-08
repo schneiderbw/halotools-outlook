@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createTicket } from "../halo/client.js";
-import { getHaloAuth } from "../halo/context.js";
+import { createTicket } from "@iusehalo/halo-api";
 
 const inputSchema = {
   summary: z.string().min(1).describe("Short, single-line ticket subject."),
@@ -40,8 +39,7 @@ export function registerCreateTicket(server: McpServer): void {
       inputSchema,
     },
     async ({ summary, details, client_id, user_id, tickettype_id }) => {
-      const auth = getHaloAuth();
-      const ticket = await createTicket(auth, {
+      const ticket = await createTicket({
         summary,
         details,
         client_id,

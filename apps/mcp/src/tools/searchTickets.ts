@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { searchTickets } from "../halo/client.js";
-import { getHaloAuth } from "../halo/context.js";
+import { searchTickets } from "@iusehalo/halo-api";
 
 const inputSchema = {
   query: z
@@ -29,8 +28,7 @@ export function registerSearchTickets(server: McpServer): void {
       inputSchema,
     },
     async ({ query, limit }) => {
-      const auth = getHaloAuth();
-      const tickets = await searchTickets(auth, query, limit ?? 25);
+      const tickets = await searchTickets(query, limit ?? 25);
       const rows = tickets.map((t) => ({
         id: t.id,
         summary: t.summary,

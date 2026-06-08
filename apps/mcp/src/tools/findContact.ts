@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { findUserByEmail, getOpenTicketCount } from "../halo/client.js";
-import { getHaloAuth } from "../halo/context.js";
+import { findUserByEmail, getOpenTicketCount } from "@iusehalo/halo-api";
 
 const inputSchema = {
   email: z
@@ -20,14 +19,13 @@ export function registerFindContact(server: McpServer): void {
       inputSchema,
     },
     async ({ email }) => {
-      const auth = getHaloAuth();
-      const user = await findUserByEmail(auth, email);
+      const user = await findUserByEmail(email);
       if (!user) {
         return {
           content: [{ type: "text", text: `No contact found in Halo for ${email}.` }],
         };
       }
-      const openTicketCount = await getOpenTicketCount(auth, user.id);
+      const openTicketCount = await getOpenTicketCount(user.id);
       const summary = {
         id: user.id,
         name: user.name,
