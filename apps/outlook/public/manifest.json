@@ -10,8 +10,8 @@
     "termsOfUseUrl": "https://iusehalo.com/terms"
   },
   "name": {
-    "short": "Halo",
-    "full": "HaloPSA for Outlook"
+    "short": "HaloPSA for Outlook",
+    "full": "HaloPSA for Outlook by Rising Tide"
   },
   "description": {
     "short": "Surface Halo context and log emails to tickets without leaving Outlook.",
@@ -36,7 +36,11 @@
     }
   },
   "validDomains": [
-    "tools.iusehalo.com"
+    "tools.iusehalo.com",
+    "login.microsoftonline.com",
+    "login.windows.net",
+    "login.live.com",
+    "accounts.google.com"
   ],
   "extensions": [
     {
@@ -95,7 +99,8 @@
           "actions": [
             {
               "id": "onMessageSendHandler",
-              "type": "executeFunction"
+              "type": "executeFunction",
+              "displayName": "onMessageSendHandler"
             }
           ]
         }

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import { makeStyles, tokens, Spinner, Text } from "@fluentui/react-components";
 import { ConfigScreen } from "./components/ConfigScreen";
 import { AuthScreen } from "./components/AuthScreen";
-import { getConfig } from "@iusehalo/halo-api";
+import { getConfig, getClientCache, onAuthCleared } from "@iusehalo/halo-api";
 import { isAuthenticated } from "@iusehalo/halo-api";
 import { getCurrentEmailContext, type EmailContext } from "./lib/office";
 
@@ -41,7 +41,16 @@ export function App() {
   const refreshPhase = useCallback(() => {
     if (!getConfig()) setPhase("needs-config");
     else if (!isAuthenticated()) setPhase("needs-auth");
-    else setPhase("ready");
+    else {
+      setPhase("ready");
+      // Warm ClientCache once we're authenticated. Single ~3MB call that
+      // gives us the agent record, agents list, mailboxes, control flags —
+      // replaces several per-feature round-trips. Failure is non-fatal;
+      // downstream code falls back to legacy paths (listAgents etc.).
+      getClientCache().catch(() => {
+        /* swallow — features that depend on it will fall back */
+      });
+    }
   }, []);
 
   // Re-read current email when Outlook selection changes
@@ -84,6 +93,13 @@ export function App() {
       }
     };
   }, [refreshPhase, refreshEmail]);
+
+  // Flip back to AuthScreen the moment the API layer detects a server-side
+  // auth failure and wipes tokens (401 after retry, 403, or a 400 body
+  // containing an OAuth invalid/expired-token error). Without this the
+  // component that fired the failed call would just render its own
+  // MessageBar showing the raw 4xx and the user would be stuck.
+  useEffect(() => onAuthCleared(refreshPhase), [refreshPhase]);
 
   if (phase === "loading") {
     return (

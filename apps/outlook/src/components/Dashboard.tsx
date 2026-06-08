@@ -34,7 +34,7 @@ import {
   findTicketsForEmail,
 } from "@iusehalo/halo-api";
 import { signOut } from "@iusehalo/halo-api";
-import { clearConfig, getConfig } from "@iusehalo/halo-api";
+import { clearConfig, getConfig, getCachedClientCache } from "@iusehalo/halo-api";
 import { domainOf, openExternalUrl, type EmailContext } from "../lib/office";
 import type { HaloUser, HaloClient, HaloTicket } from "@iusehalo/halo-api";
 
@@ -76,6 +76,18 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightSemibold,
     fontSize: tokens.fontSizeBase300,
   },
+  brandColumn: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+  },
+  agentLine: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
 });
 
 export function Dashboard({ email, onSignedOut }: Props) {
@@ -104,7 +116,10 @@ export function Dashboard({ email, onSignedOut }: Props) {
 
     (async () => {
       try {
-        const matchedContact = await findUserByEmail(email.senderEmail);
+        // For sent items / drafts, customerEmail is the recipient (the other
+        // party); for inbox messages it's the sender. Looking up the agent's
+        // own address against findUserByEmail would return nothing.
+        const matchedContact = await findUserByEmail(email.customerEmail);
         if (cancelled) return;
 
         let matchedClient: HaloClient | undefined;
@@ -114,7 +129,9 @@ export function Dashboard({ email, onSignedOut }: Props) {
             name: matchedContact.client_name ?? "",
           };
         } else {
-          const domain = domainOf(email.senderEmail);
+          // Domain comes from the customer's email — for outgoing this is
+          // the recipient's domain, not the agent's tenant domain.
+          const domain = domainOf(email.customerEmail);
           if (domain) matchedClient = await findClientByDomain(domain);
         }
         if (cancelled) return;
@@ -144,7 +161,7 @@ export function Dashboard({ email, onSignedOut }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [email.senderEmail, email.internetMessageId, refreshTick]);
+  }, [email.customerEmail, email.internetMessageId, refreshTick]);
 
   // Refetch open tickets whenever the active client changes (auto or override)
   useEffect(() => {
@@ -211,7 +228,17 @@ export function Dashboard({ email, onSignedOut }: Props) {
     <div className={styles.root}>
       <UpdateBanner />
       <div className={styles.header}>
-        <Text className={styles.brand}>HaloPSA</Text>
+        <div className={styles.brandColumn}>
+          <Text className={styles.brand}>
+            {getCachedClientCache()?.control?.license_name ?? "HaloPSA"}
+          </Text>
+          {(() => {
+            const a = getCachedClientCache()?.agent;
+            if (!a) return null;
+            const subtitle = a.jobtitle ? `${a.name} · ${a.jobtitle}` : a.name;
+            return <Text className={styles.agentLine}>{subtitle}</Text>;
+          })()}
+        </div>
         <div style={{ display: "flex", gap: 4 }}>
           <Button
             appearance="subtle"
@@ -244,7 +271,7 @@ export function Dashboard({ email, onSignedOut }: Props) {
       {loadingResolve && (
         <div className={styles.loading}>
           <Spinner size="small" />
-          <Text size={200}>Looking up {email.senderEmail}…</Text>
+          <Text size={200}>Looking up {email.customerEmail}…</Text>
         </div>
       )}
 

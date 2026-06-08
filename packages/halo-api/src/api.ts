@@ -1,5 +1,5 @@
 import { getAccessToken, refresh, NotAuthenticatedError } from "./auth.js";
-import { getConfig, getTokens } from "./config.js";
+import { getConfig, getTokens, clearTokens } from "./config.js";
 import { storage } from "./storage.js";
 import type {
   HaloClient,
@@ -9,6 +9,9 @@ import type {
   HaloTicketType,
   HaloStatus,
   HaloAgent,
+  HaloClientCache,
+  HaloChargeRate,
+  HaloSalesMailboxGroup,
   HaloKbArticle,
   HaloCannedText,
   HaloCannedTextGroup,
@@ -56,19 +59,41 @@ async function call<T>(path: string, init: RequestInit = {}, retried = false): P
     );
   }
 
-  // 401 → one retry after forced refresh.
-  // Skipped when there's no refresh token (server-side stateless callers like
-  // the MCP server pass an access token only and let 401 bubble to the client).
+  // 401 → one retry after forced refresh. Skipped when there's no refresh
+  // token (server-side stateless callers like the MCP server pass an access
+  // token only). If refresh fails it already wipes tokens (auth.ts), so we
+  // fall through to the auth-failure handling below.
   if (res.status === 401 && !retried) {
     const tokens = getTokens();
     if (tokens?.refreshToken) {
-      await refresh(tokens.refreshToken);
-      return call<T>(path, init, true);
+      try {
+        await refresh(tokens.refreshToken);
+        return call<T>(path, init, true);
+      } catch {
+        // refresh() already cleared tokens; let the !res.ok block below
+        // surface a NotAuthenticatedError so the UI flips to AuthScreen.
+      }
     }
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    // Classify auth failures vs every-other-thing-can-go-wrong:
+    //   - 401 (and we already tried refresh) → token rejected
+    //   - 403 → scope / permission revoked, treat as needing re-auth
+    //   - 400 with OAuth error-code body markers → expired token surfaced
+    //     as a 400 by some Halo endpoints
+    // 5xx and other 4xx (404 not-found, 422 validation, etc.) stay as
+    // HaloApiError so callers can show specific messages without booting
+    // the user back to sign-in.
+    const isAuthFailure =
+      res.status === 401 ||
+      res.status === 403 ||
+      (res.status === 400 && /invalid_?token|expired_?token|invalid_?grant|unauthorized/i.test(body));
+    if (isAuthFailure) {
+      await clearTokens();
+      throw new NotAuthenticatedError("Session expired — please sign in again");
+    }
     throw new HaloApiError(res.status, body);
   }
 
@@ -332,8 +357,18 @@ export async function listTicketTypes(force = false): Promise<HaloTicketType[]> 
   const key = cacheKey();
   const hit = _ticketTypesCache.get(key);
   if (hit && !force) return hit;
+  // Prefer the list ClientCache already loaded — it's the same set Halo's own
+  // UI uses, and we've already paid the round-trip on app bootstrap. Falls
+  // through to /api/TicketType with the same flags Halo's UI sends when
+  // ClientCache isn't loaded yet (older tenants, refresh path).
+  const cached = getCachedClientCache();
+  if (cached?.tickettypes && Array.isArray(cached.tickettypes)) {
+    const list = cached.tickettypes.filter((t) => !t.inactive);
+    _ticketTypesCache.set(key, list);
+    return list;
+  }
   const res = await call<{ tickettypes: HaloTicketType[] } | HaloTicketType[]>(
-    "/TicketType?includeinactive=false",
+    "/TicketType?showall=true&showinactive=false&include_defaults=true",
   );
   const list = (Array.isArray(res) ? res : res.tickettypes).filter((t) => !t.inactive);
   _ticketTypesCache.set(key, list);
@@ -341,19 +376,21 @@ export async function listTicketTypes(force = false): Promise<HaloTicketType[]> 
 }
 
 /**
- * Subset of ticket types an agent can actually pick when creating a normal ticket.
- * - use === "tickets" drops opportunities ("opps") and project types ("projects").
+ * Subset of ticket types an agent can actually pick when creating from an email.
  * - agentscanselect === false drops types that exist only for auto-creation
  *   (e.g. "AI Parse Halo Email", "Triage") or end-user surfaces.
  * - visible === false drops types Halo has hidden everywhere.
- * Halo's /TicketType endpoint returns everything indiscriminately, so we filter here.
+ *
+ * Does NOT filter on `use`: opportunities ("opps") and projects ("projects")
+ * are valid log targets for emails (a sales email logged to an opportunity,
+ * a project status email logged to a project) and were previously excluded
+ * by an over-aggressive filter that's been removed.
  */
 export function ticketTypesForAgentCreate(all: HaloTicketType[]): HaloTicketType[] {
   return all.filter((t) => {
     if (t.inactive) return false;
     if (t.visible === false) return false;
     if (t.agentscanselect === false) return false;
-    if (t.use && t.use !== "tickets") return false;
     return true;
   });
 }
@@ -402,17 +439,124 @@ export function clearReferenceCache() {
   _prioritiesCache.delete(key);
 }
 
+// ---------- ClientCache (bootstrap data) ----------
+
+let _clientCache: HaloClientCache | undefined;
+let _clientCachePromise: Promise<HaloClientCache> | undefined;
+
+/**
+ * Fetch /api/ClientCache — the same endpoint the Halo UI bootstraps from on
+ * login. Single fat call (~3MB) that includes the signed-in agent's full
+ * record, all agents, mailboxes, tenant control flags, and more. We cache
+ * for the session and de-dupe concurrent callers via the in-flight promise.
+ *
+ * Use this in preference to listAgents() / getCurrentAgent() etc. — those
+ * pre-existing helpers stay for compatibility but route through here when
+ * possible to avoid duplicate round-trips.
+ */
+export async function getClientCache(force = false): Promise<HaloClientCache> {
+  if (_clientCache && !force) return _clientCache;
+  if (_clientCachePromise && !force) return _clientCachePromise;
+  _clientCachePromise = call<HaloClientCache>("/ClientCache").then((res) => {
+    _clientCache = res;
+    _clientCachePromise = undefined;
+    writeAgentSnapshot(res.agent);
+    // Resolve the agent's sales mailbox in the background so it's cached by
+    // the time the on-send handler needs it. Non-blocking; failure is
+    // expected for tenants without sales mailbox functionality.
+    if (res.agent?.email) {
+      findSalesMailboxIdForAgent(res.agent.email)
+        .then((id) => {
+          if (id !== undefined) writeAgentSnapshot(res.agent);
+        })
+        .catch(() => { /* silent — feature optional */ });
+    }
+    return res;
+  }).catch((e) => {
+    _clientCachePromise = undefined;
+    throw e;
+  });
+  return _clientCachePromise;
+}
+
+/**
+ * Cross-runtime agent snapshot. Written to localStorage when ClientCache
+ * resolves in the task pane so the on-send launchevent runtime (which can't
+ * fetch ClientCache itself within its tight time budget) can read it
+ * synchronously. Same shared-localStorage pattern as the diagnostics log.
+ * Trimmed to just the fields the on-send handler needs.
+ */
+const AGENT_SNAPSHOT_KEY = "halo.agentSnapshot.v1";
+
+interface AgentSnapshot {
+  id: number;
+  name: string;
+  email?: string;
+  signature?: string;
+  /** Resolved sales-mailbox id for this agent (or undefined if none / not
+   *  resolved yet). The launchevent runtime reads this for the
+   *  `sales_mailbox_override_id` field on outbound action payloads. */
+  salesMailboxId?: number;
+}
+
+function writeAgentSnapshot(agent: HaloAgent | undefined): void {
+  if (!agent || typeof window === "undefined") return;
+  try {
+    const snap: AgentSnapshot = {
+      id: agent.id,
+      name: agent.name,
+      email: agent.email,
+      signature: agent.signature,
+      salesMailboxId: getCachedSalesMailboxId(),
+    };
+    window.localStorage.setItem(AGENT_SNAPSHOT_KEY, JSON.stringify(snap));
+  } catch {
+    /* swallow — quota, private mode, etc. */
+  }
+}
+
+/** Synchronous accessor — returns the cached ClientCache if already loaded,
+ *  undefined otherwise. Use this in render paths where blocking on a fetch
+ *  isn't appropriate. Call getClientCache() once at app bootstrap to warm. */
+export function getCachedClientCache(): HaloClientCache | undefined {
+  return _clientCache;
+}
+
+export function clearClientCache(): void {
+  _clientCache = undefined;
+  _clientCachePromise = undefined;
+}
+
 // ---------- Current user → Halo agent ----------
 
 const CURRENT_AGENT_KEY = "halo.currentAgentId.v1";
 
 /**
- * Resolve the current Outlook user to a Halo agent. Cached in storage on success.
- * Returns undefined if no agent has a matching email — surfaces a non-fatal "Assign to me unavailable".
+ * Resolve the current Halo agent for the signed-in user. Uses ClientCache.agent
+ * when available (one round-trip on app load), falls back to the legacy
+ * listAgents+filter path for older Halo tenants where /api/ClientCache might
+ * not be exposed. The outlookEmail argument is only used by the fallback path
+ * and is now optional.
+ *
+ * Cached in storage so subsequent calls don't re-fetch.
  */
 export async function getCurrentAgent(
-  outlookEmail: string,
+  outlookEmail?: string,
 ): Promise<HaloAgent | undefined> {
+  // Primary path: ClientCache.agent IS the current agent.
+  try {
+    const cc = await getClientCache();
+    if (cc.agent) {
+      await storage().set(CURRENT_AGENT_KEY, cc.agent.id);
+      return cc.agent;
+    }
+  } catch {
+    // Fall through to legacy path on any ClientCache failure (older tenants,
+    // permission issues, network). Don't surface as an error — the legacy
+    // path is functionally equivalent for agent identity.
+  }
+
+  if (!outlookEmail) return undefined;
   const cachedId = storage().get<number>(CURRENT_AGENT_KEY);
   if (cachedId) {
     const agents = await listAgents();
@@ -425,6 +569,134 @@ export async function getCurrentAgent(
   );
   if (matched) await storage().set(CURRENT_AGENT_KEY, matched.id);
   return matched;
+}
+
+// ---------- Sales mailbox resolution ----------
+
+const SALES_MAILBOX_ID_KEY = "halo.salesMailboxId.v1";
+const SALES_MAILBOX_RESOLVED_FOR_KEY = "halo.salesMailboxResolvedFor.v1";
+
+/**
+ * Resolve the `sales_mailbox_override_id` for the signed-in agent.
+ *
+ * Two-step walk against /api/SalesMailbox (accessible to non-admin agents):
+ *   1. GET /SalesMailbox lists the sales-mailbox GROUPS in the tenant
+ *   2. GET /SalesMailbox/<group_id>?includedetails=true returns the group
+ *      with its `mailboxes[]` populated — each one a per-agent sales mailbox
+ *      setup with either `name` (the mailbox email) or `linked_agent_email`
+ *      we match against the agent's email
+ *
+ * Cached in storage keyed by the resolved-for email so we don't re-walk on
+ * every send. Returns undefined when:
+ *   - the tenant doesn't have sales mailbox functionality enabled
+ *   - the agent has no shared/sales mailbox configured for them
+ *   - the endpoint isn't reachable (older Halo, permission edge cases)
+ *
+ * The caller should omit `sales_mailbox_override_id` from the payload when
+ * this returns undefined — Halo falls back to tenant defaults.
+ */
+export async function findSalesMailboxIdForAgent(
+  agentEmail: string,
+): Promise<number | undefined> {
+  const lc = agentEmail.toLowerCase();
+  const cachedFor = storage().get<string>(SALES_MAILBOX_RESOLVED_FOR_KEY);
+  if (cachedFor === lc) {
+    const cached = storage().get<number>(SALES_MAILBOX_ID_KEY);
+    if (typeof cached === "number") return cached;
+  }
+  try {
+    const list = await call<
+      { mailboxes?: HaloSalesMailboxGroup[] } | HaloSalesMailboxGroup[]
+    >("/SalesMailbox");
+    const groups = Array.isArray(list) ? list : list.mailboxes ?? [];
+    for (const group of groups) {
+      if (typeof group?.id !== "number") continue;
+      const detail = await call<HaloSalesMailboxGroup>(
+        `/SalesMailbox/${group.id}?includedetails=true`,
+      );
+      const match = (detail.mailboxes ?? []).find(
+        (m) =>
+          m.name?.toLowerCase() === lc ||
+          m.linked_agent_email?.toLowerCase() === lc,
+      );
+      if (match && typeof match.id === "number") {
+        await storage().set(SALES_MAILBOX_RESOLVED_FOR_KEY, lc);
+        await storage().set(SALES_MAILBOX_ID_KEY, match.id);
+        return match.id;
+      }
+    }
+  } catch {
+    // Tenant without sales mailbox feature, or endpoint unreachable. Cache
+    // the negative so we don't keep walking on every send. Use a sentinel
+    // value (-1) since storage().get returns undefined for unset keys —
+    // we want to distinguish "not resolved yet" from "resolved to nothing".
+    await storage().set(SALES_MAILBOX_RESOLVED_FOR_KEY, lc);
+    await storage().set(SALES_MAILBOX_ID_KEY, -1);
+    return undefined;
+  }
+  // No match found across any group — same negative-cache treatment.
+  await storage().set(SALES_MAILBOX_RESOLVED_FOR_KEY, lc);
+  await storage().set(SALES_MAILBOX_ID_KEY, -1);
+  return undefined;
+}
+
+/** Synchronous accessor for the cached sales-mailbox id. Returns the id when
+ *  resolved successfully, undefined when not resolved or resolved-to-nothing
+ *  (the sentinel -1 case). Used by render paths and by the on-send handler
+ *  via the agent snapshot. */
+export function getCachedSalesMailboxId(): number | undefined {
+  const id = storage().get<number>(SALES_MAILBOX_ID_KEY);
+  return typeof id === "number" && id > 0 ? id : undefined;
+}
+
+// ---------- Charge rates ----------
+
+/** Halo lookup category that holds charge rates. */
+const CHARGE_RATE_LOOKUP_ID = 17;
+
+/** Read the charge-rate list out of ClientCache.lookups (lookupid 17).
+ *  Returns "No Charge" (id 0) as a leading entry even when the tenant
+ *  hasn't explicitly configured one — the compose timer defaults to
+ *  no-charge and we want a stable picker option. */
+export function getChargeRates(): HaloChargeRate[] {
+  const cc = getCachedClientCache();
+  const rows = (cc?.lookups ?? []).filter(
+    (l) => l.lookupid === CHARGE_RATE_LOOKUP_ID,
+  );
+  const mapped: HaloChargeRate[] = rows.map((l) => ({
+    id: l.id,
+    name: l.name,
+    colour: typeof l.custom2 === "string" ? l.custom2 : undefined,
+  }));
+  // Guarantee a No Charge option (id 0) at the top, even if Halo's tenant
+  // config doesn't include one. The on-send payload omits chargerate_id
+  // when 0 is selected, so this is purely a display affordance.
+  if (!mapped.some((r) => r.id === 0)) {
+    mapped.unshift({ id: 0, name: "No Charge" });
+  }
+  return mapped;
+}
+
+/**
+ * Strip the agent's configured signature from an outbound email body.
+ *
+ * Pulls the signature from ClientCache.agent.signature and removes it via
+ * exact substring match. Returns the body unchanged when:
+ *   - ClientCache isn't loaded yet (use the synchronous accessor)
+ *   - The agent hasn't configured a signature in Halo
+ *   - The signature doesn't appear verbatim in the body (different rendering,
+ *     edited send, attached at compose time differently)
+ *
+ * No regex / heuristics — false-positive stripping (removing real content)
+ * would be worse than leaving the signature in.
+ */
+export function stripAgentSignature(bodyHtml: string): string {
+  const cc = getCachedClientCache();
+  const sig = cc?.agent?.signature;
+  if (!sig || !bodyHtml) return bodyHtml;
+  const idx = bodyHtml.indexOf(sig);
+  if (idx === -1) return bodyHtml;
+  return bodyHtml.slice(0, idx) + bodyHtml.slice(idx + sig.length);
 }
 
 // ---------- Write paths ----------

@@ -110,6 +110,13 @@
         border-color: var(--line);
       }
       .btn-ghost:hover { background: #fff; }
+      .btn-sponsor {
+        background: transparent;
+        color: #bf3989;
+        border-color: #bf3989;
+      }
+      .btn-sponsor:hover { background: #fdf2f8; }
+      .btn-sponsor svg { width: 16px; height: 16px; }
 
       .hero-art {
         display: flex;
@@ -239,6 +246,19 @@
         background: var(--brand);
       }
 
+      .callout {
+        max-width: 1080px;
+        margin: 32px auto 0;
+        padding: 14px 20px;
+        background: var(--brand-soft);
+        border-left: 3px solid var(--brand);
+        border-radius: 6px;
+        font-size: 14px;
+        color: #5a1318;
+      }
+      .callout strong { color: var(--brand-dark); }
+      .callout a { font-weight: 600; }
+
       footer {
         max-width: 1080px;
         margin: 64px auto 32px;
@@ -290,6 +310,20 @@
           >
             View on GitHub
           </a>
+          <a
+            class="btn btn-sponsor"
+            href="https://github.com/sponsors/greenlighttec"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Support development on GitHub Sponsors"
+          >
+            <!-- GitHub heart icon, inlined so no extra request and so the
+                 stroke colour inherits from .btn-sponsor for hover states. -->
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="m8 14.25.345.666a.75.75 0 0 1-.69 0l-.008-.004-.018-.01a7.152 7.152 0 0 1-.31-.17 22.055 22.055 0 0 1-3.434-2.414C2.045 10.731 0 8.35 0 5.5 0 2.836 2.086 1 4.25 1 5.797 1 7.153 1.802 8 3.02 8.847 1.802 10.203 1 11.75 1 13.914 1 16 2.836 16 5.5c0 2.85-2.045 5.231-3.885 6.818a22.066 22.066 0 0 1-3.744 2.584l-.018.01-.005.003h-.002L8 14.25Z" />
+            </svg>
+            Sponsor
+          </a>
         </div>
       </div>
       <div class="hero-art">
@@ -297,6 +331,13 @@
           <img src="/outlook/assets/icon-128.png" alt="" />
         </div>
       </div>
+    </div>
+
+    <div class="callout">
+      <strong>These are day-to-day user tools.</strong> Looking for HaloPSA
+      <strong>admin and management</strong> utilities — reports, bulk
+      operations, tenant-wide configuration helpers? Head over to
+      <a href="https://halotoolkit.com" target="_blank" rel="noopener noreferrer">halotoolkit.com</a>.
     </div>
 
     <section>
@@ -400,6 +441,14 @@
       </div>
       <div>
         <a href="/outlook/setup/">Setup wizard</a> ·
+        <a href="https://halotoolkit.com" target="_blank" rel="noopener noreferrer">
+          Admin tools at halotoolkit.com
+        </a>
+        ·
+        <a href="https://github.com/sponsors/greenlighttec" target="_blank" rel="noopener noreferrer">
+          Sponsor
+        </a>
+        ·
         <a href="https://iusehalo.com/privacy" target="_blank" rel="noopener noreferrer">Privacy</a>
         ·
         <a href="https://iusehalo.com/terms" target="_blank" rel="noopener noreferrer">Terms</a>

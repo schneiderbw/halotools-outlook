@@ -21,6 +21,7 @@ import {
   clearReferenceCache,
 } from "@iusehalo/halo-api";
 import type { HaloTicketType } from "@iusehalo/halo-api";
+import { MANIFEST_VERSION } from "../setup/version";
 import {
   getEvents,
   clearEvents,
@@ -427,7 +428,18 @@ export function SettingsScreen({ onClose, onSignOut, onReconfigure }: Props) {
         <Divider />
 
         <Text block className={styles.meta}>
-          HaloPSA for Outlook v0.1.0 · tools.iusehalo.com
+          HaloPSA for Outlook · manifest v{MANIFEST_VERSION}
+          {(() => {
+            try {
+              const mv = new URLSearchParams(window.location.search).get("mv");
+              return mv && mv.split(".").slice(0, 3).join(".") !== MANIFEST_VERSION
+                ? ` (installed: ${mv})`
+                : null;
+            } catch {
+              return null;
+            }
+          })()}
+          {" · tools.iusehalo.com"}
         </Text>
       </div>
     </div>
