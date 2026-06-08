@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createCRMNote } from "../halo/client.js";
-import { getHaloAuth } from "../halo/context.js";
+import { createCRMNote } from "@iusehalo/halo-api";
 
 const inputSchema = {
   subject: z.string().min(1).describe("Short note subject / title."),
@@ -54,8 +53,7 @@ export function registerLogNote(server: McpServer): void {
           ],
         };
       }
-      const auth = getHaloAuth();
-      const created = await createCRMNote(auth, {
+      const created = await createCRMNote({
         subject,
         note,
         client_id,

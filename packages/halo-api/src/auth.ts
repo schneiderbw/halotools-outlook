@@ -7,7 +7,7 @@
 // stays surface-agnostic: Outlook plugs in an Office.dialog implementation, a browser
 // extension plugs in chrome.identity.launchWebAuthFlow, Teams plugs in its own SDK, etc.
 
-import { generateState, generateVerifier, challengeFromVerifier } from "./pkce";
+import { generateState, generateVerifier, challengeFromVerifier } from "./pkce.js";
 import {
   getConfig,
   getTokens,
@@ -15,7 +15,7 @@ import {
   clearTokens,
   type StoredTokens,
   type TenantConfig,
-} from "./config";
+} from "./config.js";
 
 /** The structured payload a DialogOpener must return after the OAuth redirect. */
 export interface DialogResultMessage {

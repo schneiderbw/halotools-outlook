@@ -1,6 +1,6 @@
-import { getAccessToken, refresh, NotAuthenticatedError } from "./auth";
-import { getConfig, getTokens } from "./config";
-import { storage } from "./storage";
+import { getAccessToken, refresh, NotAuthenticatedError } from "./auth.js";
+import { getConfig, getTokens } from "./config.js";
+import { storage } from "./storage.js";
 import type {
   HaloClient,
   HaloUser,
@@ -22,7 +22,7 @@ import type {
   CreateCannedTextPayload,
   CreateCRMNotePayload,
   UpdateTicketPayload,
-} from "./types";
+} from "./types.js";
 
 class HaloApiError extends Error {
   constructor(public status: number, public body: string) {
@@ -57,9 +57,11 @@ async function call<T>(path: string, init: RequestInit = {}, retried = false): P
   }
 
   // 401 → one retry after forced refresh.
+  // Skipped when there's no refresh token (server-side stateless callers like
+  // the MCP server pass an access token only and let 401 bubble to the client).
   if (res.status === 401 && !retried) {
     const tokens = getTokens();
-    if (tokens) {
+    if (tokens?.refreshToken) {
       await refresh(tokens.refreshToken);
       return call<T>(path, init, true);
     }
@@ -127,11 +129,18 @@ export async function searchTickets(query: string, limit = 25): Promise<HaloTick
 
 /** Cache of the full canned-text list. Halo doesn't support server-side search reliably
  * on /CannedText, so we pull once and filter in-memory. The list is small enough
- * (hundreds of entries) that this is fast and avoids hitting the API on every keystroke. */
-let _cannedTextCache: HaloCannedText[] | undefined;
+ * (hundreds of entries) that this is fast and avoids hitting the API on every keystroke.
+ * Keyed by haloBaseUrl so stateless multi-tenant callers (MCP) don't leak across tenants. */
+const _cannedTextCache = new Map<string, HaloCannedText[]>();
+
+function cacheKey(): string {
+  return getConfig()?.haloBaseUrl ?? "";
+}
 
 export async function listCannedText(force = false): Promise<HaloCannedText[]> {
-  if (_cannedTextCache && !force) return _cannedTextCache;
+  const key = cacheKey();
+  const hit = _cannedTextCache.get(key);
+  if (hit && !force) return hit;
   const q = new URLSearchParams({
     showall: "true",
     entity: "0",
@@ -140,8 +149,9 @@ export async function listCannedText(force = false): Promise<HaloCannedText[]> {
   const res = await call<HaloCannedText[] | { canned_texts: HaloCannedText[] }>(
     `/CannedText?${q}`,
   );
-  _cannedTextCache = Array.isArray(res) ? res : (res.canned_texts ?? []);
-  return _cannedTextCache;
+  const list = Array.isArray(res) ? res : (res.canned_texts ?? []);
+  _cannedTextCache.set(key, list);
+  return list;
 }
 
 /** Search canned text by name and body, optionally scoped to a group. */
@@ -161,11 +171,14 @@ export async function searchCannedText(
     .slice(0, 50);
 }
 
-/** Halo stores canned-text groups in the shared /Lookup table under lookupid=45. */
-let _cannedTextGroupsCache: HaloCannedTextGroup[] | undefined;
+/** Halo stores canned-text groups in the shared /Lookup table under lookupid=45.
+ * Keyed by haloBaseUrl for the same reason as _cannedTextCache. */
+const _cannedTextGroupsCache = new Map<string, HaloCannedTextGroup[]>();
 
 export async function listCannedTextGroups(force = false): Promise<HaloCannedTextGroup[]> {
-  if (_cannedTextGroupsCache && !force) return _cannedTextGroupsCache;
+  const key = cacheKey();
+  const hit = _cannedTextGroupsCache.get(key);
+  if (hit && !force) return hit;
   const q = new URLSearchParams({
     lookupid: "45",
     showallcodes: "true",
@@ -174,10 +187,11 @@ export async function listCannedTextGroups(force = false): Promise<HaloCannedTex
   const res = await call<HaloCannedTextGroup[]>(`/Lookup?${q}`);
   // valueint1=0 is the Tickets/email type; 1 is Chat. Keep Tickets only — the
   // Outlook plug-in is composing email, not chat.
-  _cannedTextGroupsCache = (Array.isArray(res) ? res : []).filter(
+  const list = (Array.isArray(res) ? res : []).filter(
     (g) => g.valueint1 == null || g.valueint1 === 0,
   );
-  return _cannedTextGroupsCache;
+  _cannedTextGroupsCache.set(key, list);
+  return list;
 }
 
 export async function createCannedText(
@@ -188,7 +202,7 @@ export async function createCannedText(
     body: JSON.stringify([payload]),
   });
   // Invalidate cache so the new entry appears in the next search.
-  _cannedTextCache = undefined;
+  _cannedTextCache.delete(cacheKey());
   return res[0];
 }
 
@@ -197,7 +211,7 @@ export async function createCannedTextGroup(name: string): Promise<HaloCannedTex
     method: "POST",
     body: JSON.stringify([{ lookupid: 45, name, valueint1: 0 }]),
   });
-  _cannedTextGroupsCache = undefined;
+  _cannedTextGroupsCache.delete(cacheKey());
   return res[0];
 }
 
@@ -230,6 +244,29 @@ export async function listOpenTicketsForClient(clientId: number): Promise<HaloTi
   });
   const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
   return Array.isArray(res) ? res : res.tickets;
+}
+
+export async function listOpenTicketsForUser(userId: number): Promise<HaloTicket[]> {
+  const q = new URLSearchParams({
+    user_id: String(userId),
+    open_only: "true",
+    pageinate: "false",
+    includedetails: "true",
+    includeagentdetails: "true",
+  });
+  const res = await call<{ tickets: HaloTicket[] } | HaloTicket[]>(`/Tickets?${q}`);
+  return Array.isArray(res) ? res : res.tickets;
+}
+
+/** Best-effort open-ticket count for a contact. Swallows errors so the caller
+ *  (e.g. the MCP contact dossier) renders zero rather than failing the whole request. */
+export async function getOpenTicketCount(userId: number): Promise<number> {
+  try {
+    const tix = await listOpenTicketsForUser(userId);
+    return tix.length;
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -283,19 +320,24 @@ export async function findTicketsForEmail(messageIds: string[]): Promise<HaloTic
 }
 
 // ---------- Reference data (cached in-memory for the session) ----------
+// All keyed by haloBaseUrl so stateless multi-tenant callers don't see each
+// other's data when serving multiple tenants from one process.
 
-let _ticketTypesCache: HaloTicketType[] | undefined;
-let _agentsCache: HaloAgent[] | undefined;
-let _statusesCache: HaloStatus[] | undefined;
-let _prioritiesCache: HaloPriority[] | undefined;
+const _ticketTypesCache = new Map<string, HaloTicketType[]>();
+const _agentsCache = new Map<string, HaloAgent[]>();
+const _statusesCache = new Map<string, HaloStatus[]>();
+const _prioritiesCache = new Map<string, HaloPriority[]>();
 
 export async function listTicketTypes(force = false): Promise<HaloTicketType[]> {
-  if (_ticketTypesCache && !force) return _ticketTypesCache;
+  const key = cacheKey();
+  const hit = _ticketTypesCache.get(key);
+  if (hit && !force) return hit;
   const res = await call<{ tickettypes: HaloTicketType[] } | HaloTicketType[]>(
     "/TicketType?includeinactive=false",
   );
-  _ticketTypesCache = (Array.isArray(res) ? res : res.tickettypes).filter((t) => !t.inactive);
-  return _ticketTypesCache;
+  const list = (Array.isArray(res) ? res : res.tickettypes).filter((t) => !t.inactive);
+  _ticketTypesCache.set(key, list);
+  return list;
 }
 
 /**
@@ -317,37 +359,47 @@ export function ticketTypesForAgentCreate(all: HaloTicketType[]): HaloTicketType
 }
 
 export async function listAgents(force = false): Promise<HaloAgent[]> {
-  if (_agentsCache && !force) return _agentsCache;
+  const key = cacheKey();
+  const hit = _agentsCache.get(key);
+  if (hit && !force) return hit;
   const res = await call<{ agents: HaloAgent[] } | HaloAgent[]>(
     "/Agent?includeinactive=false",
   );
-  _agentsCache = (Array.isArray(res) ? res : res.agents).filter((a) => !a.inactive);
-  return _agentsCache;
+  const list = (Array.isArray(res) ? res : res.agents).filter((a) => !a.inactive);
+  _agentsCache.set(key, list);
+  return list;
 }
 
 export async function listStatuses(force = false): Promise<HaloStatus[]> {
-  if (_statusesCache && !force) return _statusesCache;
+  const key = cacheKey();
+  const hit = _statusesCache.get(key);
+  if (hit && !force) return hit;
   const res = await call<{ statuses: HaloStatus[] } | HaloStatus[]>(
     "/Status?includeinactive=false",
   );
-  _statusesCache = (Array.isArray(res) ? res : res.statuses).filter((s) => !s.inactive);
-  return _statusesCache;
+  const list = (Array.isArray(res) ? res : res.statuses).filter((s) => !s.inactive);
+  _statusesCache.set(key, list);
+  return list;
 }
 
 export async function listPriorities(force = false): Promise<HaloPriority[]> {
-  if (_prioritiesCache && !force) return _prioritiesCache;
+  const key = cacheKey();
+  const hit = _prioritiesCache.get(key);
+  if (hit && !force) return hit;
   const res = await call<{ priorities: HaloPriority[] } | HaloPriority[]>(
     "/Priority?includeinactive=false",
   );
-  _prioritiesCache = (Array.isArray(res) ? res : res.priorities).filter((p) => !p.inactive);
-  return _prioritiesCache;
+  const list = (Array.isArray(res) ? res : res.priorities).filter((p) => !p.inactive);
+  _prioritiesCache.set(key, list);
+  return list;
 }
 
 export function clearReferenceCache() {
-  _ticketTypesCache = undefined;
-  _agentsCache = undefined;
-  _statusesCache = undefined;
-  _prioritiesCache = undefined;
+  const key = cacheKey();
+  _ticketTypesCache.delete(key);
+  _agentsCache.delete(key);
+  _statusesCache.delete(key);
+  _prioritiesCache.delete(key);
 }
 
 // ---------- Current user → Halo agent ----------

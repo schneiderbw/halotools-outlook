@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { listCannedTextGroups, searchCannedText } from "../halo/client.js";
-import { getHaloAuth } from "../halo/context.js";
+import { listCannedTextGroups, searchCannedText } from "@iusehalo/halo-api";
 
 const inputSchema = {
   query: z
@@ -27,10 +26,9 @@ export function registerSearchCannedText(server: McpServer): void {
       inputSchema,
     },
     async ({ query, group }) => {
-      const auth = getHaloAuth();
       let groupId: number | undefined;
       if (group) {
-        const groups = await listCannedTextGroups(auth);
+        const groups = await listCannedTextGroups();
         const needle = group.trim().toLowerCase();
         const match = groups.find((g) => g.name?.toLowerCase().includes(needle));
         if (!match) {
@@ -48,7 +46,7 @@ export function registerSearchCannedText(server: McpServer): void {
         }
         groupId = match.id;
       }
-      const results = await searchCannedText(auth, query, groupId);
+      const results = await searchCannedText(query, groupId);
       const rows = results.map((c) => ({
         id: c.id,
         name: c.name,

@@ -5,11 +5,16 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import { createHaloMcpServer } from "./server.js";
 import {
+  installRequestStorage,
   loadEnvAuth,
   parseBearerToken,
-  withHaloAuth,
+  withRequestAuth,
+  type RequestAuth,
 } from "./halo/context.js";
-import type { HaloAuth } from "./halo/client.js";
+
+// halo-api reads tenant + token via its storage adapter; install ours (which is
+// AsyncLocalStorage-backed) before any tool can run.
+installRequestStorage();
 
 // ---------- transport selection ----------
 
@@ -24,7 +29,7 @@ async function runStdio(): Promise<void> {
   const auth = loadEnvAuth();
   if (!auth) {
     process.stderr.write(
-      "halo-mcp-server: missing Halo config. Set HALO_BASE_URL and either HALO_ACCESS_TOKEN or HALO_CLIENT_ID + HALO_CLIENT_SECRET.\n",
+      "halo-mcp-server: missing Halo config. Set HALO_BASE_URL and HALO_ACCESS_TOKEN.\n",
     );
     process.exit(1);
   }
@@ -33,23 +38,18 @@ async function runStdio(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // Wrap every incoming JSON-RPC message in the stdio auth scope. The high-level
-  // McpServer routes via Server.setRequestHandler under the hood — by installing
-  // an onmessage shim BEFORE connect() returns control to the transport, we
-  // would race the SDK's own handler. So instead we lean on the fact that in
-  // stdio mode there's exactly one HALO_* config: run the entire process under
-  // the same auth context.
-  await withHaloAuth(auth, () => new Promise<void>(() => { /* run forever */ }));
+  // Stdio mode is single-tenant for the life of the process — wrap the whole
+  // run in one auth scope so every tool call resolves the same Halo config.
+  await withRequestAuth(auth, () => new Promise<void>(() => { /* run forever */ }));
 }
 
 async function runHttp(): Promise<void> {
   const port = Number(process.env.PORT ?? 3001);
 
-  // Stateless: every POST is independent. Each request carries its own
-  // Authorization header naming a (tenant, token) pair, so we cannot pool
-  // transports — or McpServer instances — across requests.
+  // Stateless: every POST is independent. Each request carries its own bearer
+  // token naming a (tenant, access-token) pair, so we mint a fresh transport
+  // and McpServer per request and run it inside its own auth scope.
   const httpServer = http.createServer(async (req, res) => {
-    // Health check.
     if (req.url === "/health" && req.method === "GET") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
@@ -62,9 +62,8 @@ async function runHttp(): Promise<void> {
       return;
     }
 
-    // Parse Authorization: Bearer <token>.
     const authHeader = req.headers["authorization"];
-    let haloAuth: HaloAuth | undefined;
+    let haloAuth: RequestAuth | undefined;
     if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
       try {
         haloAuth = parseBearerToken(authHeader.slice("Bearer ".length));
@@ -76,7 +75,6 @@ async function runHttp(): Promise<void> {
         return;
       }
     } else {
-      // Fall back to env vars (useful for single-tenant hosted deployments).
       haloAuth = loadEnvAuth();
     }
 
@@ -86,15 +84,12 @@ async function runHttp(): Promise<void> {
         JSON.stringify({
           error: "unauthorized",
           message:
-            "Send Authorization: Bearer halo:<base-url>:<halo-access-token> or haloc:<base-url>:<client-id>:<client-secret>.",
+            "Send Authorization: Bearer halo:<base-url>:<halo-access-token>.",
         }),
       );
       return;
     }
 
-    // Per-request transport and server (fully stateless). Generating a session
-    // ID per call lets the SDK still issue an Mcp-Session-Id response header,
-    // which some clients expect, but we don't retain any state across requests.
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       enableJsonResponse: false,
@@ -107,7 +102,7 @@ async function runHttp(): Promise<void> {
     });
 
     await server.connect(transport);
-    await withHaloAuth(haloAuth, () => transport.handleRequest(req, res));
+    await withRequestAuth(haloAuth, () => transport.handleRequest(req, res));
   });
 
   httpServer.listen(port, () => {
@@ -116,7 +111,6 @@ async function runHttp(): Promise<void> {
     );
   });
 
-  // Graceful shutdown.
   const shutdown = () => {
     httpServer.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 5000).unref();

@@ -3,9 +3,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   listOpenTicketsForClient,
   listOpenTicketsForUser,
-} from "../halo/client.js";
-import { getHaloAuth } from "../halo/context.js";
-import type { HaloTicket } from "../halo/types.js";
+  type HaloTicket,
+} from "@iusehalo/halo-api";
 
 const inputSchema = {
   client_id: z
@@ -53,10 +52,9 @@ export function registerListOpenTickets(server: McpServer): void {
           ],
         };
       }
-      const auth = getHaloAuth();
       const tickets: HaloTicket[] = user_id
-        ? await listOpenTicketsForUser(auth, user_id)
-        : await listOpenTicketsForClient(auth, client_id!);
+        ? await listOpenTicketsForUser(user_id)
+        : await listOpenTicketsForClient(client_id!);
 
       const filtered =
         user_id && client_id

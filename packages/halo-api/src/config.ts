@@ -1,4 +1,4 @@
-import { storage } from "./storage";
+import { storage } from "./storage.js";
 
 // Each MSP's admin registers their own Halo Connect app on their own HaloPSA instance,
 // then enters the resulting Client ID + Halo base URL on first launch.

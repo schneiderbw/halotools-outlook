@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { appendAction } from "../halo/client.js";
-import { getHaloAuth } from "../halo/context.js";
+import { appendAction } from "@iusehalo/halo-api";
 
 const inputSchema = {
   ticket_id: z
@@ -40,8 +39,7 @@ export function registerAppendActionToTicket(server: McpServer): void {
       inputSchema,
     },
     async ({ ticket_id, note, outcome, hiddenfromuser, time_taken }) => {
-      const auth = getHaloAuth();
-      const action = await appendAction(auth, {
+      const action = await appendAction({
         ticket_id,
         note,
         outcome: outcome ?? "Note",
