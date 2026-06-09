@@ -77,18 +77,22 @@ function preflight(res: http.ServerResponse): void {
   res.end();
 }
 
+const LOG_REQUESTS = process.env.MCP_LOG_REQUESTS === "1" || process.env.MCP_LOG_REQUESTS === "true";
+
 export function createHttpServer(): http.Server {
   return http.createServer(async (req, res) => {
-    const started = Date.now();
-    const method = req.method ?? "?";
-    const url = req.url ?? "?";
-    const origin = (req.headers.origin as string | undefined) ?? "-";
-    const ua = (req.headers["user-agent"] as string | undefined) ?? "-";
-    res.on("finish", () => {
-      process.stderr.write(
-        `mcp ${method} ${url} → ${res.statusCode} (${Date.now() - started}ms) origin=${origin} ua=${ua.slice(0, 80)}\n`,
-      );
-    });
+    if (LOG_REQUESTS) {
+      const started = Date.now();
+      const method = req.method ?? "?";
+      const url = req.url ?? "?";
+      const origin = (req.headers.origin as string | undefined) ?? "-";
+      const ua = (req.headers["user-agent"] as string | undefined) ?? "-";
+      res.on("finish", () => {
+        process.stderr.write(
+          `mcp ${method} ${url} → ${res.statusCode} (${Date.now() - started}ms) origin=${origin} ua=${ua.slice(0, 80)}\n`,
+        );
+      });
+    }
     try {
       await route(req, res);
     } catch (err) {
