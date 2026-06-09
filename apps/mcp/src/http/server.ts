@@ -119,6 +119,28 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
     return;
   }
 
+  // RFC 8414 §3.1 path-insertion form: clients (Claude does this) look for
+  // metadata at <host>/.well-known/<suffix>/<issuer-path> rather than the
+  // suffix form <issuer>/.well-known/<suffix>. We need to serve both.
+  // openid-configuration is a fallback Claude tries when the OAuth one 404s.
+  const insertion = path.match(
+    /^\/\.well-known\/(oauth-authorization-server|openid-configuration|oauth-protected-resource)(\/.*)?$/,
+  );
+  if (insertion && req.method === "GET") {
+    const suffix = insertion[1];
+    const innerPath = insertion[2] ?? "";
+    const inner = parseTenantPath(innerPath);
+    if (inner) {
+      const issuer = `${getPublicOrigin(req)}/mcp/t/${inner.configBlob}`;
+      if (suffix === "oauth-protected-resource") {
+        emitProtectedResourceMetadata(res, issuer);
+      } else {
+        emitAuthorizationServerMetadata(res, issuer);
+      }
+      return;
+    }
+  }
+
   const tenantPath = parseTenantPath(path);
   if (!tenantPath) {
     notFound(res);
@@ -133,7 +155,11 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
     emitProtectedResourceMetadata(res, issuer);
     return;
   }
-  if (rest === ".well-known/oauth-authorization-server" && req.method === "GET") {
+  if (
+    (rest === ".well-known/oauth-authorization-server" ||
+      rest === ".well-known/openid-configuration") &&
+    req.method === "GET"
+  ) {
     emitAuthorizationServerMetadata(res, issuer);
     return;
   }
