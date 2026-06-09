@@ -194,6 +194,23 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
   notFound(res);
 }
 
+// Pool of live MCP transports keyed by the session id we hand the client on
+// initialize. The MCP protocol requires `initialize` → (optional `initialized`
+// notification) → `tools/list` etc. to share state, so we cannot spin up a
+// fresh McpServer per HTTP request the way a stateless REST endpoint could —
+// the second request would land on a server that hadn't been initialized.
+//
+// Each session's auth context still comes from the per-request Bearer token,
+// not from session creation time: tools resolve their {baseUrl, accessToken}
+// via AsyncLocalStorage, and we rewrap each handleRequest in withRequestAuth.
+// Means a session keeps working across token refreshes — Claude just sends a
+// new Bearer and we're good.
+interface PooledSession {
+  transport: StreamableHTTPServerTransport;
+  server: ReturnType<typeof createHaloMcpServer>;
+}
+const sessions = new Map<string, PooledSession>();
+
 async function handleMcpTransport(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -218,24 +235,65 @@ async function handleMcpTransport(
     return;
   }
 
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-    enableJsonResponse: false,
-  });
-  const server = createHaloMcpServer();
+  // POST bodies are JSON-RPC envelopes; we need to peek at the body to know
+  // whether this is an initialize call (which must create a new session) or a
+  // follow-up call on an existing session. The transport itself wants to
+  // re-parse the body, so we hand it the buffer rather than the stream.
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  const rawBody = req.method === "POST" ? await readBody(req) : "";
+  const parsedBody = rawBody ? safeJson(rawBody) : undefined;
 
-  res.on("close", () => {
-    transport.close().catch(() => undefined);
-    server.close().catch(() => undefined);
-  });
+  let session = sessionId ? sessions.get(sessionId) : undefined;
 
-  await server.connect(transport);
+  if (!session) {
+    // No session id, or unknown id. Only an initialize request may bootstrap.
+    if (!isInitializeRequest(parsedBody)) {
+      writeJson(res, 400, {
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "No active session — send initialize first." },
+        id: null,
+      });
+      return;
+    }
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      enableJsonResponse: true,
+      onsessioninitialized: (sid) => {
+        sessions.set(sid, { transport, server });
+      },
+    });
+    const server = createHaloMcpServer();
+    transport.onclose = () => {
+      if (transport.sessionId) sessions.delete(transport.sessionId);
+      server.close().catch(() => undefined);
+    };
+    await server.connect(transport);
+    session = { transport, server };
+  }
+
   await withRequestAuth(
     {
       baseUrl: tenant.halo,
       accessToken,
       clientId: tenant.clientId,
     },
-    () => transport.handleRequest(req, res),
+    () => session!.transport.handleRequest(req, res, parsedBody),
+  );
+}
+
+function safeJson(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return undefined;
+  }
+}
+
+function isInitializeRequest(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const arr = Array.isArray(body) ? body : [body];
+  return arr.some(
+    (m) => typeof m === "object" && m !== null && (m as { method?: unknown }).method === "initialize",
   );
 }
