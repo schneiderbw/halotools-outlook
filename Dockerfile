@@ -46,6 +46,8 @@ WORKDIR /app
 COPY --from=build /app/apps/outlook/dist /usr/share/nginx/html/outlook
 COPY --from=build /app/apps/teams/dist /usr/share/nginx/html/teams
 COPY landing/index.html /usr/share/nginx/html/index.html
+COPY landing/favicon.png /usr/share/nginx/html/favicon.png
+COPY landing/favicon.png /usr/share/nginx/html/favicon.ico
 COPY nginx.conf /etc/nginx/http.d/default.conf
 
 # MCP runtime: halo-api dist + mcp dist + the hoisted production node_modules.
