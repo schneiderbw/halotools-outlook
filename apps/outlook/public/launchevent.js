@@ -362,6 +362,48 @@
     return html.slice(0, i) + html.slice(i + sig.length);
   }
 
+  // Strip the quoted/forwarded portion from an Outlook HTML reply body so
+  // only the agent's new text is logged to Halo. Handles the three most
+  // common quoting patterns:
+  //   • Outlook desktop/OWA: <div id="divRplyFwdMsg"> (+ preceding <hr>)
+  //   • Generic / iOS Mail:  <blockquote> wrapping the quoted thread
+  //   • Gmail:               <div class="gmail_quote">
+  // Falls back to the original html on any error — never blocks the send.
+  function stripQuotedContent(html) {
+    if (!html) return html;
+    try {
+      var parser = new DOMParser();
+      var doc = parser.parseFromString(html, "text/html");
+      var body = doc.body;
+
+      // Outlook reply/forward separator.
+      var rplyDiv = doc.getElementById("divRplyFwdMsg");
+      if (rplyDiv && rplyDiv.parentNode) {
+        var children = Array.from(rplyDiv.parentNode.childNodes);
+        var idx = children.indexOf(rplyDiv);
+        // Pull in a leading <hr> if present so we don't leave a dangling rule.
+        var start = (idx > 0 && children[idx - 1].nodeName === "HR") ? idx - 1 : idx;
+        children.slice(start).forEach(function (n) {
+          if (n.parentNode) n.parentNode.removeChild(n);
+        });
+      }
+
+      // Blockquote-style quoting (iOS Mail, many web clients).
+      Array.from(body.querySelectorAll("blockquote")).forEach(function (el) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+
+      // Gmail quote wrapper.
+      Array.from(body.querySelectorAll("div.gmail_quote")).forEach(function (el) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+
+      return body.innerHTML.trim();
+    } catch (e) {
+      return html;
+    }
+  }
+
   // Minimal HTML → plain text for emailbody field. Same approach as the
   // task pane's htmlToText helper but inline in ES5 for the launchevent
   // runtime.
@@ -484,11 +526,11 @@
       } catch (e) {
         /* swallow */
       }
-      // On-send is always outbound by construction. Strip the agent's
-      // configured Halo signature from note_html so the action's short-form
-      // note isn't dominated by the sig block; keep the full body in
-      // emailbody_html for parity with native intake.
-      var noteHtml = stripSignature(data.body || "", agent.signature);
+      // On-send is always outbound by construction. Strip quoted/forwarded
+      // content first so only the agent's new text lands in Halo, then strip
+      // the agent's configured signature from the note field.
+      var newContentHtml = stripQuotedContent(data.body || "");
+      var noteHtml = stripSignature(newContentHtml, agent.signature);
       var payload = [{
         ticket_id: Number(ticketId),
         outcome: "Outgoing Email",
@@ -506,10 +548,9 @@
         // Direction + delivered-status guard matches Halo's native intake.
         emaildirection: "O",
         email_status: 2,
-        // Full original body in both formats so the action mirrors what
-        // native intake produces.
-        emailbody_html: data.body || "",
-        emailbody: htmlToText(data.body || ""),
+        // New-content-only body (quoted thread stripped) in both formats.
+        emailbody_html: newContentHtml,
+        emailbody: htmlToText(newContentHtml),
         // For outbound mail: stamp from_address_override with the agent's
         // actual send-from address. from_mailbox_id: -2 signals "use
         // overridden from address".
