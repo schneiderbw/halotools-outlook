@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Halo MCP server — setup</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta
+      name="description"
+      content="Connect HaloPSA to Claude, ChatGPT, Cursor and other AI assistants via the Model Context Protocol."
+    />
+    <script>
+      // Defence-in-depth HTTPS redirect.
+      (function () {
+        if (
+          location.protocol === "http:" &&
+          location.hostname !== "localhost" &&
+          location.hostname !== "127.0.0.1"
+        ) {
+          location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+        }
+      })();
+    </script>
+    <style>
+      :root {
+        --brand: #ef3340;
+        --brand-dark: #d92733;
+        --brand-soft: #fee7e9;
+        --beta: #b85c00;
+        --beta-soft: #fff4e5;
+        --ink: #1c1c1e;
+        --ink-2: #45494e;
+        --ink-3: #6c7079;
+        --line: #e6e6e8;
+        --bg: #fafafa;
+        --bg-2: #f1f1f4;
+        --ok: #1a7f37;
+        --ok-soft: #dafbe1;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: var(--ink);
+        background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+        min-height: 100vh;
+        line-height: 1.5;
+      }
+      a { color: var(--brand); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      header {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 24px 24px 8px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      header img { width: 32px; height: 32px; border-radius: 50%; }
+      header .wordmark {
+        font-size: 15px;
+        font-weight: 700;
+      }
+      header .wordmark a { color: var(--ink); }
+      header .wordmark a:hover { text-decoration: none; }
+      header .crumb {
+        font-size: 13px;
+        color: var(--ink-3);
+      }
+
+      .page {
+        max-width: 760px;
+        margin: 16px auto 48px;
+        padding: 0 24px;
+      }
+
+      .title {
+        margin: 24px 0 4px;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .pill-beta {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: var(--beta-soft);
+        color: var(--beta);
+        padding: 3px 10px;
+        border-radius: 999px;
+      }
+      .subtitle {
+        color: var(--ink-2);
+        margin: 0 0 24px;
+        font-size: 16px;
+      }
+
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 28px;
+        margin-bottom: 16px;
+      }
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .card p {
+        margin: 0 0 12px;
+        color: var(--ink-2);
+      }
+
+      .steps {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 13px;
+        color: var(--ink-3);
+        margin-bottom: 18px;
+      }
+      .step {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .step .num {
+        display: inline-flex;
+        width: 22px;
+        height: 22px;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-2);
+        border-radius: 50%;
+        font-weight: 700;
+        font-size: 12px;
+      }
+      .step.active { color: var(--brand); font-weight: 600; }
+      .step.active .num { background: var(--brand); color: #fff; }
+      .step.done .num { background: var(--ok-soft); color: var(--ok); }
+      .step-divider {
+        flex: 0 0 16px;
+        height: 1px;
+        background: var(--line);
+      }
+
+      label {
+        display: block;
+        font-weight: 600;
+        font-size: 14px;
+        margin: 18px 0 6px;
+      }
+      label .hint {
+        display: block;
+        font-weight: 400;
+        font-size: 12px;
+        color: var(--ink-3);
+        margin-top: 2px;
+      }
+      input[type="text"], input[type="url"] {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-size: 15px;
+        font-family: inherit;
+        background: #fff;
+      }
+      input[type="text"]:focus, input[type="url"]:focus {
+        outline: 2px solid var(--brand);
+        outline-offset: -1px;
+        border-color: var(--brand);
+      }
+      input.invalid {
+        border-color: var(--brand);
+        background: var(--brand-soft);
+      }
+      .error-msg {
+        color: var(--brand);
+        font-size: 13px;
+        margin: 6px 0 0;
+      }
+
+      .ol {
+        margin: 0;
+        padding-left: 22px;
+      }
+      .ol li {
+        margin-bottom: 10px;
+        color: var(--ink-2);
+      }
+      .ol li strong { color: var(--ink); }
+
+      .code-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--bg-2);
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-family: Consolas, ui-monospace, monospace;
+        font-size: 13px;
+        word-break: break-all;
+        margin: 6px 0;
+      }
+      .code-row .val { flex: 1; }
+      .copy-btn {
+        flex: 0 0 auto;
+        padding: 4px 10px;
+        font-size: 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 6px;
+        cursor: pointer;
+        color: var(--ink);
+      }
+      .copy-btn:hover { border-color: var(--brand); color: var(--brand); }
+      .copy-btn.copied { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 20px;
+      }
+      .btn {
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .btn-primary {
+        background: var(--brand);
+        color: #fff;
+      }
+      .btn-primary:hover { background: var(--brand-dark); }
+      .btn-primary:disabled {
+        background: var(--bg-2);
+        color: var(--ink-3);
+        cursor: not-allowed;
+      }
+      .btn-secondary {
+        background: #fff;
+        color: var(--ink);
+        border-color: var(--line);
+      }
+      .btn-secondary:hover { border-color: var(--brand); color: var(--brand); }
+
+      pre {
+        background: var(--bg-2);
+        padding: 14px 16px;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-family: Consolas, ui-monospace, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        margin: 8px 0 12px;
+      }
+      pre code { color: var(--ink); }
+
+      .info {
+        background: var(--brand-soft);
+        border-left: 3px solid var(--brand);
+        border-radius: 6px;
+        padding: 12px 16px;
+        font-size: 14px;
+        color: #5a1318;
+        margin-bottom: 16px;
+      }
+      .info strong { color: var(--brand-dark); }
+
+      .success-banner {
+        background: var(--ok-soft);
+        border-left: 3px solid var(--ok);
+        border-radius: 6px;
+        padding: 14px 16px;
+        font-size: 14px;
+        color: #14532d;
+        margin-bottom: 18px;
+      }
+      .success-banner strong { color: var(--ok); }
+
+      .tabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 14px;
+      }
+      .tab {
+        padding: 8px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        color: var(--ink-3);
+        font-family: inherit;
+      }
+      .tab:hover { color: var(--ink); }
+      .tab.active {
+        color: var(--brand);
+        border-bottom-color: var(--brand);
+      }
+
+      footer {
+        max-width: 760px;
+        margin: 32px auto 32px;
+        padding: 16px 24px 0;
+        border-top: 1px solid var(--line);
+        color: var(--ink-3);
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .hidden { display: none !important; }
+
+      @media (max-width: 540px) {
+        .title { font-size: 24px; }
+        .card { padding: 20px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="/favicon.png" alt="" />
+      <span class="wordmark"><a href="/">Halo Tools</a></span>
+      <span class="crumb">· MCP server setup</span>
+    </header>
+
+    <div class="page">
+      <h1 class="title">
+        Connect HaloPSA to your AI assistant
+        <span class="pill-beta">In beta</span>
+      </h1>
+      <p class="subtitle">
+        Generate a Model Context Protocol URL you can paste into Claude,
+        ChatGPT, Cursor and other MCP clients. Sign-in goes through your
+        real Halo login — tokens never touch our servers.
+      </p>
+
+      <!-- ── Step 1: Halo URL ─────────────────────────────────────── -->
+      <div id="step-halo" class="card">
+        <div class="steps">
+          <span class="step active"><span class="num">1</span>Halo URL</span>
+          <span class="step-divider"></span>
+          <span class="step"><span class="num">2</span>Register app</span>
+          <span class="step-divider"></span>
+          <span class="step"><span class="num">3</span>Client ID</span>
+          <span class="step-divider"></span>
+          <span class="step"><span class="num">4</span>Connect</span>
+        </div>
+
+        <h2>What's your HaloPSA URL?</h2>
+        <p>The base URL of your Halo instance, e.g. <code>https://halo.yourcompany.com</code>.</p>
+
+        <label for="halo-input">
+          HaloPSA URL
+        </label>
+        <input
+          type="url"
+          id="halo-input"
+          placeholder="https://halo.yourcompany.com"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <p id="halo-err" class="error-msg hidden"></p>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="halo-next" disabled>Next</button>
+        </div>
+      </div>
+
+      <!-- ── Step 2: Register a Halo Connect app ──────────────────── -->
+      <div id="step-register" class="card hidden">
+        <div class="steps">
+          <span class="step done"><span class="num">1</span>Halo URL</span>
+          <span class="step-divider"></span>
+          <span class="step active"><span class="num">2</span>Register app</span>
+          <span class="step-divider"></span>
+          <span class="step"><span class="num">3</span>Client ID</span>
+          <span class="step-divider"></span>
+          <span class="step"><span class="num">4</span>Connect</span>
+        </div>
+
+        <h2>Register a Halo Connect application</h2>
+        <p>
+          In your Halo instance, go to
+          <strong>Configuration → Integrations → API</strong> and click
+          <em>New</em>. Configure as follows:
+        </p>
+
+        <ol class="ol">
+          <li>
+            <strong>Application Name:</strong> <code>MCP for AI assistants</code>
+            (anything you like)
+          </li>
+          <li>
+            <strong>Authentication Method:</strong>
+            <code>Authorization Code (PKCE)</code>
+          </li>
+          <li>
+            <strong>Allowed Logins:</strong> check
+            <em>Allow Agent Logins</em>. Leave the others unchecked.
+          </li>
+          <li>
+            <strong>Redirect URI:</strong>
+            <div class="code-row">
+              <span class="val">https://tools.iusehalo.com/auth/callback</span>
+              <button class="copy-btn" data-copy="https://tools.iusehalo.com/auth/callback">
+                Copy
+              </button>
+            </div>
+            <p style="font-size: 13px; color: var(--ink-3); margin: 4px 0 0">
+              This is the universal callback for every iusehalo tool —
+              Outlook, MCP and any future ones. Register once and never
+              touch this list again.
+            </p>
+          </li>
+          <li>
+            <strong>Permissions / Scopes:</strong> <code>all</code>
+            (or the minimum needed — tickets, users, clients, actions).
+          </li>
+          <li>
+            <strong>Save</strong> the application, then copy the generated
+            <strong>Client ID</strong> for the next step.
+          </li>
+        </ol>
+
+        <div class="info" style="margin-top: 14px">
+          <strong>CORS isn't required for MCP.</strong> The MCP server
+          handles token exchange server-to-server, so the Halo Connect
+          CORS whitelist can stay empty unless you also run the Outlook
+          add-in (which needs <code>https://tools.iusehalo.com</code>).
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-secondary" id="register-back">Back</button>
+          <button class="btn btn-primary" id="register-next">I've registered the app</button>
+        </div>
+      </div>
+
+      <!-- ── Step 3: Client ID ────────────────────────────────────── -->
+      <div id="step-client" class="card hidden">
+        <div class="steps">
+          <span class="step done"><span class="num">1</span>Halo URL</span>
+          <span class="step-divider"></span>
+          <span class="step done"><span class="num">2</span>Register app</span>
+          <span class="step-divider"></span>
+          <span class="step active"><span class="num">3</span>Client ID</span>
+          <span class="step-divider"></span>
+          <span class="step"><span class="num">4</span>Connect</span>
+        </div>
+
+        <h2>Paste the Client ID</h2>
+        <p>From the API application you just registered.</p>
+
+        <label for="client-input">
+          Client ID
+        </label>
+        <input
+          type="text"
+          id="client-input"
+          placeholder="00000000-0000-0000-0000-000000000000"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <p id="client-err" class="error-msg hidden"></p>
+
+        <div class="actions">
+          <button class="btn btn-secondary" id="client-back">Back</button>
+          <button class="btn btn-primary" id="client-next" disabled>Generate MCP URL</button>
+        </div>
+      </div>
+
+      <!-- ── Step 4: Connect ──────────────────────────────────────── -->
+      <div id="step-done" class="card hidden">
+        <div class="steps">
+          <span class="step done"><span class="num">1</span>Halo URL</span>
+          <span class="step-divider"></span>
+          <span class="step done"><span class="num">2</span>Register app</span>
+          <span class="step-divider"></span>
+          <span class="step done"><span class="num">3</span>Client ID</span>
+          <span class="step-divider"></span>
+          <span class="step active"><span class="num">4</span>Connect</span>
+        </div>
+
+        <div class="success-banner">
+          <strong>Your MCP URL is ready.</strong> Paste it into any MCP
+          client. The first time you connect, you'll be sent through your
+          Halo login.
+        </div>
+
+        <h2>Your MCP server URL</h2>
+        <div class="code-row">
+          <span class="val" id="mcp-url-out"></span>
+          <button class="copy-btn" id="mcp-url-copy">Copy</button>
+        </div>
+
+        <h2 style="margin-top: 28px">Add it to your assistant</h2>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="claude-web">Claude (web)</button>
+          <button class="tab" data-tab="claude-desktop">Claude Desktop</button>
+          <button class="tab" data-tab="cursor">Cursor</button>
+          <button class="tab" data-tab="chatgpt">ChatGPT</button>
+          <button class="tab" data-tab="generic">Other</button>
+        </div>
+
+        <div class="tab-panel" data-panel="claude-web">
+          <ol class="ol">
+            <li>Open <a href="https://claude.ai/desktop/connected/customize/connectors" target="_blank" rel="noopener noreferrer">claude.ai → Settings → Connectors</a>.</li>
+            <li>Click <strong>Add custom connector</strong>.</li>
+            <li>Paste the URL above as the server URL. Name it <em>Halo PSA</em> (or whatever you like).</li>
+            <li>Click <strong>Connect</strong> — you'll be sent to your Halo login. Sign in normally.</li>
+            <li>Tools will appear under the connector; try asking Claude to "find the Halo contact for &lt;email&gt;".</li>
+          </ol>
+        </div>
+
+        <div class="tab-panel hidden" data-panel="claude-desktop">
+          <p>Edit your Claude Desktop config file:</p>
+          <ul class="ol">
+            <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+            <li><strong>Windows:</strong> <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
+          </ul>
+          <p>Add (or merge into) the <code>mcpServers</code> block:</p>
+          <pre><code id="snippet-claude-desktop"></code></pre>
+          <p>Restart Claude Desktop; tools appear in the MCP panel.</p>
+        </div>
+
+        <div class="tab-panel hidden" data-panel="cursor">
+          <p>Edit your <code>~/.cursor/mcp.json</code> (or workspace <code>.cursor/mcp.json</code>):</p>
+          <pre><code id="snippet-cursor"></code></pre>
+          <p>Restart Cursor; tools appear in the MCP settings.</p>
+        </div>
+
+        <div class="tab-panel hidden" data-panel="chatgpt">
+          <ol class="ol">
+            <li>Open <a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">ChatGPT</a> → Settings → Connectors.</li>
+            <li>Click <strong>Add connector</strong> → <strong>MCP server</strong>.</li>
+            <li>Paste the URL above and follow the OAuth flow.</li>
+          </ol>
+          <p style="font-size: 13px; color: var(--ink-3)">
+            MCP connector support varies by ChatGPT plan and is rolling out
+            gradually — if you don't see the option, your account may not
+            have it enabled yet.
+          </p>
+        </div>
+
+        <div class="tab-panel hidden" data-panel="generic">
+          <p>
+            Any MCP client that supports HTTP transport with OAuth 2.0
+            (Streamable HTTP, MCP spec 2025-03-26 or later) can use this
+            URL directly. Discovery is via the standard
+            <code>.well-known/oauth-protected-resource</code> +
+            <code>.well-known/oauth-authorization-server</code> at the URL
+            above.
+          </p>
+        </div>
+
+        <div class="actions" style="margin-top: 24px">
+          <button class="btn btn-secondary" id="done-reset">Start over</button>
+          <a class="btn btn-primary" href="/">Back to Halo Tools</a>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <div>
+        <strong>Halo Tools</strong> · built by
+        <a href="https://risingtidegroup.net" target="_blank" rel="noopener noreferrer">
+          Rising Tide Consulting Group
+        </a>
+      </div>
+      <div>
+        <a href="/">Home</a> ·
+        <a href="/outlook/setup/">Outlook setup</a> ·
+        <a href="https://github.com/RisingTideGroup/halotools-outlook" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+    </footer>
+
+    <script>
+      // ── State + helpers ───────────────────────────────────────────
+      const state = { halo: "", clientId: "" };
+
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+
+      function show(id) {
+        ["step-halo", "step-register", "step-client", "step-done"].forEach((s) => {
+          $("#" + s).classList.toggle("hidden", s !== id);
+        });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function isValidHaloUrl(s) {
+        return /^https:\/\/[^\s/]+\.[^\s]+$/.test(s.trim());
+      }
+
+      function base64url(input) {
+        return btoa(input)
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "");
+      }
+
+      function buildMcpUrl(halo, clientId) {
+        const cleaned = {
+          halo: halo.replace(/\/+$/, ""),
+          clientId: clientId.trim(),
+        };
+        const blob = base64url(JSON.stringify(cleaned));
+        return location.origin + "/mcp/t/" + blob + "/";
+      }
+
+      function clientSnippet(kind, url) {
+        if (kind === "claude-desktop") {
+          return JSON.stringify(
+            {
+              mcpServers: {
+                halo: { url },
+              },
+            },
+            null,
+            2,
+          );
+        }
+        if (kind === "cursor") {
+          return JSON.stringify(
+            {
+              mcpServers: {
+                halo: { url },
+              },
+            },
+            null,
+            2,
+          );
+        }
+        return url;
+      }
+
+      // ── Copy-button wiring (delegated) ────────────────────────────
+      document.addEventListener("click", async (e) => {
+        const btn = e.target.closest(".copy-btn");
+        if (!btn) return;
+        const text = btn.dataset.copy ?? btn.previousElementSibling?.textContent;
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          const original = btn.textContent;
+          btn.textContent = "Copied";
+          btn.classList.add("copied");
+          setTimeout(() => {
+            btn.textContent = original;
+            btn.classList.remove("copied");
+          }, 1500);
+        } catch {
+          /* clipboard blocked — user can still select manually */
+        }
+      });
+
+      // ── Step 1 → 2 ────────────────────────────────────────────────
+      const haloInput = $("#halo-input");
+      const haloNext = $("#halo-next");
+      const haloErr = $("#halo-err");
+
+      haloInput.addEventListener("input", () => {
+        haloNext.disabled = !haloInput.value.trim();
+        if (haloInput.value && !haloErr.classList.contains("hidden")) {
+          haloErr.classList.add("hidden");
+          haloInput.classList.remove("invalid");
+        }
+      });
+      haloInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !haloNext.disabled) haloNext.click();
+      });
+      haloNext.addEventListener("click", () => {
+        const v = haloInput.value.trim();
+        if (!isValidHaloUrl(v)) {
+          haloErr.textContent = "Enter a valid HaloPSA URL starting with https://";
+          haloErr.classList.remove("hidden");
+          haloInput.classList.add("invalid");
+          return;
+        }
+        state.halo = v.replace(/\/+$/, "");
+        show("step-register");
+      });
+
+      // ── Step 2 ────────────────────────────────────────────────────
+      $("#register-back").addEventListener("click", () => show("step-halo"));
+      $("#register-next").addEventListener("click", () => show("step-client"));
+
+      // ── Step 3 → 4 ────────────────────────────────────────────────
+      const clientInput = $("#client-input");
+      const clientNext = $("#client-next");
+      const clientErr = $("#client-err");
+      const guidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      clientInput.addEventListener("input", () => {
+        clientNext.disabled = !clientInput.value.trim();
+        if (clientInput.value && !clientErr.classList.contains("hidden")) {
+          clientErr.classList.add("hidden");
+          clientInput.classList.remove("invalid");
+        }
+      });
+      clientInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !clientNext.disabled) clientNext.click();
+      });
+      $("#client-back").addEventListener("click", () => show("step-register"));
+      clientNext.addEventListener("click", () => {
+        const v = clientInput.value.trim();
+        if (!guidRe.test(v)) {
+          clientErr.textContent = "Client ID should look like 00000000-0000-0000-0000-000000000000";
+          clientErr.classList.remove("hidden");
+          clientInput.classList.add("invalid");
+          return;
+        }
+        state.clientId = v;
+        const url = buildMcpUrl(state.halo, state.clientId);
+        $("#mcp-url-out").textContent = url;
+        $("#mcp-url-copy").dataset.copy = url;
+        $("#snippet-claude-desktop").textContent = clientSnippet("claude-desktop", url);
+        $("#snippet-cursor").textContent = clientSnippet("cursor", url);
+        show("step-done");
+      });
+
+      // ── Tabs on step 4 ────────────────────────────────────────────
+      $$(".tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          const kind = tab.dataset.tab;
+          $$(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+          $$(".tab-panel").forEach((p) => {
+            p.classList.toggle("hidden", p.dataset.panel !== kind);
+          });
+        });
+      });
+
+      // ── Reset ─────────────────────────────────────────────────────
+      $("#done-reset").addEventListener("click", () => {
+        state.halo = "";
+        state.clientId = "";
+        haloInput.value = "";
+        clientInput.value = "";
+        haloNext.disabled = true;
+        clientNext.disabled = true;
+        show("step-halo");
+      });
+    </script>
+  </body>
+</html>
