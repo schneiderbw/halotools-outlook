@@ -37,6 +37,7 @@ import {
   getBody,
   fetchAllAttachments,
   listAttachments,
+  resolveInlineCidImages,
   type EmailContext,
   type FetchedAttachment,
 } from "../lib/office";
@@ -172,7 +173,7 @@ export function QuickImportBanner({
     setStatus("busy");
     setErrorMsg(undefined);
     try {
-      const html = await getBody("html");
+      const html = await resolveInlineCidImages(await getBody("html"));
       const defaults = getDefaults();
       let attachments: HaloAttachmentInline[] = [];
       const rawAttachments = listAttachments().filter((a) => !a.isInline);
@@ -368,7 +369,7 @@ function AppendDialog({
     if (!selectedId) return;
     setBusy(true);
     try {
-      const html = await getBody("html");
+      const html = await resolveInlineCidImages(await getBody("html"));
       let attachments: HaloAttachmentInline[] = [];
       let attachWarning: string | undefined;
       if (includeAttachments && attachmentCount > 0) {
