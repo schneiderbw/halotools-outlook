@@ -195,6 +195,7 @@ export function QuickImportBanner({
         user_id: contact?.id,
         actionby_user_id: contact?.id,
         agent_id: undefined,
+        who: email.senderName || email.senderEmail,
         internetmessageid: email.internetMessageId,
         inreplyto: email.inReplyTo,
         references: email.references.length ? email.references.join(" ") : undefined,
@@ -418,6 +419,9 @@ function AppendDialog({
         // Agent attribution on outbound mail. For inbound we leave agent_id
         // unset so Halo treats it as customer-originated.
         agent_id: isOutgoing ? agent?.id : undefined,
+        // Inbound: set "who" to the sender so Halo shows the customer as the
+        // action author instead of defaulting to the authenticated agent.
+        who: isOutgoing ? undefined : (email.senderName || email.senderEmail),
         internetmessageid: email.internetMessageId,
         inreplyto: email.inReplyTo,
         references: email.references.length ? email.references.join(" ") : undefined,

@@ -323,6 +323,11 @@ export interface CreateActionPayload {
   /** Agent (employee) attribution. Set on outbound mail so the action shows
    *  as agent-originated; omit on inbound so Halo treats it as customer-from. */
   agent_id?: number;
+  /** Display name shown as the action author in Halo's timeline. When omitted,
+   *  Halo defaults to the authenticated agent. Set to the customer's display name
+   *  (or email address if no display name) for inbound mail so the action
+   *  appears as posted by the sender rather than the logging agent. */
+  who?: string;
 }
 
 export interface CreateTicketPayload {
