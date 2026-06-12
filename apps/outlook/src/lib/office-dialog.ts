@@ -12,7 +12,7 @@ import type { DialogOpener, DialogResultMessage } from "@iusehalo/halo-api";
 
 const REDIRECT_PATH = "/outlook/auth/callback.html";
 const START_PATH = "/outlook/auth/start.html";
-const ADDIN_ORIGIN = "https://tools.iusehalo.com";
+const ADDIN_ORIGIN = window.location.origin;
 
 export function redirectUri(): string {
   return ADDIN_ORIGIN + REDIRECT_PATH;

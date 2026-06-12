@@ -48,6 +48,21 @@ export interface HaloTicketType {
   anonymouscanselect?: boolean;
   /** Visible at all in any picker. Some types are flagged invisible without being inactive. */
   visible?: boolean;
+  /** Per-type email subject tag overrides from /api/TicketType/{id}. When set,
+   *  Halo stamps this type's tickets with these tags instead of the system-wide
+   *  email_start_tag / email_end_tag from /api/Control. Empty string = use system default. */
+  email_start_tag_override?: string;
+  email_end_tag_override?: string;
+}
+
+/** Tenant-wide email and UI settings from GET /api/Control.
+ *  The endpoint returns hundreds of keys; we type the ones we use. */
+export interface HaloControl {
+  /** Prefix Halo stamps before the ticket ID in email subjects, e.g. "[Ticket #". */
+  email_start_tag?: string;
+  /** Suffix after the ticket ID, e.g. "]". */
+  email_end_tag?: string;
+  [k: string]: unknown;
 }
 
 export interface HaloStatus {
@@ -308,6 +323,11 @@ export interface CreateActionPayload {
   /** Agent (employee) attribution. Set on outbound mail so the action shows
    *  as agent-originated; omit on inbound so Halo treats it as customer-from. */
   agent_id?: number;
+  /** Display name shown as the action author in Halo's timeline. When omitted,
+   *  Halo defaults to the authenticated agent. Set to the customer's display name
+   *  (or email address if no display name) for inbound mail so the action
+   *  appears as posted by the sender rather than the logging agent. */
+  who?: string;
 }
 
 export interface CreateTicketPayload {
